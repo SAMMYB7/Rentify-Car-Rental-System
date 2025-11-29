@@ -54,15 +54,6 @@ It includes integrations for:
 * JavaMailSender
 * Validation API
 
-### **Infrastructure / DevOps**
-
-* AWS EC2
-* AWS S3
-* AWS IAM
-* CI/CD (GitHub Actions)
-* Maven
-* WAR deployment
-
 ---
 
 ## ⭐ **Key Features**
