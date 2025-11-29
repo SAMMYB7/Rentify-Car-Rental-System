@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-CarrentalApplication<carrental>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.carrental.sdp.carrental.CarrentalApplication",
+            "projectName": "carrental",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}
