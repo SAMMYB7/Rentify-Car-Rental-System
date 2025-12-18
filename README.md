@@ -114,6 +114,14 @@ The backend follows **clean layered architecture**:
 
 ## 🗄 **Database Schema (High-Level)**
 
+The database schema defines the relational structure of the Car Rental System,
+including users, cars, bookings, payments, reviews, and authentication tokens.
+
+<p align="center">
+  <img src="docs/er-diagram.png" alt="Car Rental System ER Diagram" width="850"/>
+</p>
+
+
 ### Users
 
 ```
