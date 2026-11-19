@@ -5,9 +5,8 @@ import com.carrental.sdp.carrental.model.User;
 import java.util.List;
 
 public interface PaymentService {
-    PaymentResponseDto createPaymentOrder(Long bookingId);
     PaymentResponseDto createPaymentOrder(Long bookingId, Long userId);
-    void updatePaymentStatus(String razorpayOrderId, String status);
+    void verifyPayment(String razorpayOrderId, String razorpayPaymentId, String razorpaySignature, User user);
     PaymentResponseDto getPaymentByBooking(Long bookingId, User user);
     List<PaymentResponseDto> getPaymentsForUser(Long userId);
     List<PaymentResponseDto> getAllPayments();

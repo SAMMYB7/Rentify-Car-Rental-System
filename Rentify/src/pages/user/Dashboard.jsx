@@ -55,12 +55,12 @@ const Dashboard = () => {
     try {
       // 1. Create Razorpay order via backend
       const res = await api.post("/payments/create", { bookingId });
-      const { orderId, amount, currency, key } = res.data;
+      const { orderId, currency, key } = res.data;
 
-      // 2. Open Razorpay checkout
+      // 2. Open Razorpay checkout. The amount comes from the order itself, so it is not passed
+      //    here (a float like 1999.99 * 100 can produce a non-integer and make checkout reject it).
       const options = {
         key,
-        amount: amount * 100, // Razorpay expects paise
         currency,
         name: "Rentify Car Rental",
         description: "Car Booking Payment",
@@ -85,7 +85,15 @@ const Dashboard = () => {
         },
         theme: { color: "#333333" },
       };
+      if (!window.Razorpay) {
+        alert("Payment service failed to load. Check your connection and refresh the page.");
+        return;
+      }
       const rzp = new window.Razorpay(options);
+      rzp.on("payment.failed", (response) => {
+        console.error("Razorpay payment failed:", response.error);
+        alert("Payment failed: " + (response.error?.description || "Unknown error"));
+      });
       rzp.open();
     } catch (err) {
       alert("Could not initiate payment: " + (err.response?.data?.message || err.message));

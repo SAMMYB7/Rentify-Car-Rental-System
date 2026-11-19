@@ -5,25 +5,33 @@ import com.carrental.sdp.carrental.model.Booking;
 import com.carrental.sdp.carrental.model.BookingStatus;
 import com.carrental.sdp.carrental.model.Payment;
 import com.carrental.sdp.carrental.model.PaymentStatus;
+import com.carrental.sdp.carrental.model.Role;
 import com.carrental.sdp.carrental.model.User;
 import com.carrental.sdp.carrental.repository.BookingRepository;
 import com.carrental.sdp.carrental.repository.PaymentRepository;
 import com.razorpay.Order;
 import com.razorpay.RazorpayClient;
+import com.razorpay.RazorpayException;
+import com.razorpay.Utils;
 import lombok.RequiredArgsConstructor;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.security.core.Authentication;
+import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class PaymentServiceImpl implements PaymentService {
+
+    private static final String CURRENCY = "INR";
 
     private final RazorpayClient razorpayClient;
     private final BookingRepository bookingRepository;
@@ -32,175 +40,193 @@ public class PaymentServiceImpl implements PaymentService {
     @Value("${razorpay.key_id}")
     private String razorpayApiKey;
 
-    @Override
-    @Transactional
-    public PaymentResponseDto createPaymentOrder(Long bookingId) {
-        Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new RuntimeException("Booking not found"));
-
-        // Calculate total price
-        long days = ChronoUnit.DAYS.between(booking.getStartDate(), booking.getEndDate()) + 1;
-        double amount = booking.getCar().getPricePerDay() * days;
-
-        // Razorpay expects amount in paise (multiply by 100)
-        int amountInPaise = (int) (amount * 100);
-
-        JSONObject orderRequest = new JSONObject();
-        orderRequest.put("amount", amountInPaise);
-        orderRequest.put("currency", "INR");
-        orderRequest.put("receipt", "booking_" + bookingId);
-        System.out.println("Creating Razorpay order with amount: " + amountInPaise + ", currency: INR, receipt: booking_" + bookingId);
-        try {
-            Order order = razorpayClient.orders.create(orderRequest);
-
-            Payment payment = Payment.builder()
-                    .booking(booking)
-                    .razorpayOrderId(order.get("id"))
-                    .amount(amount)
-                    .status(PaymentStatus.PENDING)
-                    .build();
-            paymentRepository.save(payment);
-
-            // Fix: Convert Integer to Double (divide by 100.0 to get rupees if you want)
-            Integer amountInPaiseResponse = order.get("amount");
-            Double amountInRupees = amountInPaiseResponse / 100.0;
-
-            return PaymentResponseDto.builder()
-                    .orderId(order.get("id"))
-                    .amount(amountInRupees) // or use amountInPaiseResponse.doubleValue() if you want to keep paise
-                    .currency("INR")
-                    .key(razorpayApiKey) // Use the stored API key
-                    .build();
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new RuntimeException("Failed to create Razorpay order", e);
-        }
-    }
-
-    @Override
-    @Transactional
-    public void updatePaymentStatus(String razorpayOrderId, String status) {
-        Payment payment = paymentRepository.findByRazorpayOrderId(razorpayOrderId)
-                .orElseThrow(() -> new RuntimeException("Payment not found"));
-        payment.setStatus(PaymentStatus.valueOf(status));
-        payment.setPaymentTime(java.time.LocalDateTime.now());
-        paymentRepository.save(payment);
-
-        // Update booking status if payment is successful
-        if (PaymentStatus.SUCCESS.name().equals(status)) {
-            Booking booking = payment.getBooking();
-            booking.setStatus(BookingStatus.PAID); // or BookingStatus.SUCCESS if you prefer
-            bookingRepository.save(booking);
-        }
-    }
+    @Value("${razorpay.key_secret}")
+    private String razorpaySecret;
 
     @Override
     @Transactional
     public PaymentResponseDto createPaymentOrder(Long bookingId, Long userId) {
+        if (bookingId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "bookingId is required.");
+        }
         Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new RuntimeException("Booking not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found."));
+
         if (!booking.getUser().getId().equals(userId)) {
-            throw new RuntimeException("You do not own this booking.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not own this booking.");
+        }
+        if (booking.getStatus() != BookingStatus.BOOKED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "This booking cannot be paid (status: " + booking.getStatus() + ").");
         }
 
-        // Duplicate Payment Prevention
-        List<Payment> existingPayments = paymentRepository.findByBookingAndStatusIn(
-            booking, List.of("PENDING", "SUCCESS"));
-        if (!existingPayments.isEmpty()) {
-            throw new RuntimeException("A payment for this booking already exists.");
+        List<Payment> existing = paymentRepository.findByBookingAndStatusIn(
+                booking, EnumSet.of(PaymentStatus.PENDING, PaymentStatus.SUCCESS));
+
+        if (existing.stream().anyMatch(p -> p.getStatus() == PaymentStatus.SUCCESS)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This booking has already been paid.");
         }
 
-        // Calculate total price
-        long days = ChronoUnit.DAYS.between(booking.getStartDate(), booking.getEndDate()) + 1;
-        double amount = booking.getCar().getPricePerDay() * days;
+        long amountInPaise = Math.round(calculateAmount(booking) * 100);
+        double amount = amountInPaise / 100.0;
 
-        // Razorpay expects amount in paise (multiply by 100)
-        int amountInPaise = (int) (amount * 100);
+        // Reuse a pending order (e.g. the user closed the checkout and retried), but only if Razorpay
+        // still knows it under the CURRENT key, it is unpaid and the amount matches. Orders created
+        // under an old/rotated key make checkout fail with 400, so those are retired instead.
+        Optional<Payment> reusable = existing.stream()
+                .filter(p -> p.getStatus() == PaymentStatus.PENDING)
+                .filter(p -> isReusableOrder(p.getRazorpayOrderId(), amountInPaise))
+                .findFirst();
+        if (reusable.isPresent()) {
+            return checkoutResponse(reusable.get().getRazorpayOrderId(), amount);
+        }
+
+        // Any other pending orders are stale (wrong key, wrong amount or unknown to Razorpay); retire them.
+        existing.stream()
+                .filter(p -> p.getStatus() == PaymentStatus.PENDING)
+                .forEach(p -> p.setStatus(PaymentStatus.FAILED));
 
         JSONObject orderRequest = new JSONObject();
         orderRequest.put("amount", amountInPaise);
-        orderRequest.put("currency", "INR");
+        orderRequest.put("currency", CURRENCY);
         orderRequest.put("receipt", "booking_" + bookingId);
 
+        String orderId;
         try {
             Order order = razorpayClient.orders.create(orderRequest);
-
-            Payment payment = Payment.builder()
-                    .booking(booking)
-                    .razorpayOrderId(order.get("id"))
-                    .amount(amount)
-                    .status(PaymentStatus.PENDING)
-                    .build();
-            paymentRepository.save(payment);
-
-            // Fix: Convert Integer to Double (divide by 100.0 to get rupees if you want)
-            Integer amountInPaiseResponse = order.get("amount");
-            Double amountInRupees = amountInPaiseResponse / 100.0;
-
-            return PaymentResponseDto.builder()
-                    .orderId(order.get("id"))
-                    .amount(amountInRupees) // or use amountInPaiseResponse.doubleValue() if you want to keep paise
-                    .currency("INR")
-                    .key(razorpayApiKey) // Use the stored API key
-                    .build();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create Razorpay order", e);
+            orderId = order.get("id");
+        } catch (RazorpayException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Could not create payment order. Please try again.", e);
         }
+
+        paymentRepository.save(Payment.builder()
+                .booking(booking)
+                .razorpayOrderId(orderId)
+                .amount(amount)
+                .status(PaymentStatus.PENDING)
+                .build());
+
+        return checkoutResponse(orderId, amount);
+    }
+
+    @Override
+    @Transactional
+    public void verifyPayment(String razorpayOrderId, String razorpayPaymentId, String razorpaySignature, User user) {
+        if (isBlank(razorpayOrderId) || isBlank(razorpayPaymentId) || isBlank(razorpaySignature)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing payment verification fields.");
+        }
+
+        Payment payment = paymentRepository.findByRazorpayOrderId(razorpayOrderId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found."));
+
+        Booking booking = payment.getBooking();
+        if (!booking.getUser().getId().equals(user.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not own this payment.");
+        }
+
+        if (payment.getStatus() == PaymentStatus.SUCCESS) {
+            return; // already verified; make retries harmless
+        }
+
+        JSONObject attributes = new JSONObject();
+        attributes.put("razorpay_order_id", razorpayOrderId);
+        attributes.put("razorpay_payment_id", razorpayPaymentId);
+        attributes.put("razorpay_signature", razorpaySignature);
+
+        boolean valid;
+        try {
+            valid = Utils.verifyPaymentSignature(attributes, razorpaySecret);
+        } catch (RazorpayException e) {
+            valid = false;
+        }
+        if (!valid) {
+            // Do not change the stored status: an invalid signature proves nothing about the real payment.
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Payment signature verification failed.");
+        }
+
+        payment.setStatus(PaymentStatus.SUCCESS);
+        payment.setPaymentTime(LocalDateTime.now());
+        booking.setStatus(BookingStatus.PAID);
+        paymentRepository.save(payment);
+        bookingRepository.save(booking);
     }
 
     @Override
     public PaymentResponseDto getPaymentByBooking(Long bookingId, User user) {
         Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new RuntimeException("Booking not found"));
-        // Only booking owner or admin can view
-        if (!booking.getUser().getId().equals(user.getId()) && !user.getRole().name().equals("ADMIN")) {
-            throw new RuntimeException("Unauthorized to view this payment.");
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found."));
+
+        boolean isOwner = booking.getUser().getId().equals(user.getId());
+        if (!isOwner && user.getRole() != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot view this payment.");
         }
-        List<Payment> payments = paymentRepository.findByBookingAndStatusIn(
-                booking, List.of("PENDING", "SUCCESS", "FAILED"));
-        if (payments.isEmpty()) {
-            throw new RuntimeException("No payment found for this booking.");
+
+        List<Payment> payments = paymentRepository.findByBookingOrderByIdDesc(booking);
+        Payment payment = payments.stream()
+                .filter(p -> p.getStatus() == PaymentStatus.SUCCESS)
+                .findFirst()
+                .orElse(payments.isEmpty() ? null : payments.get(0));
+        if (payment == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No payment found for this booking.");
         }
-        Payment payment = payments.get(0); // If multiple, return the first (or latest if you want)
-        return PaymentResponseDto.builder()
-                .orderId(payment.getRazorpayOrderId())
-                .amount(payment.getAmount())
-                .currency("INR")
-                .key(razorpayApiKey)
-                .build();
+        return toDto(payment);
     }
 
     @Override
     public List<PaymentResponseDto> getPaymentsForUser(Long userId) {
-        List<Payment> payments = paymentRepository.findAllByUserId(userId);
-        return payments.stream()
-                .map(payment -> PaymentResponseDto.builder()
-                        .orderId(payment.getRazorpayOrderId())
-                        .amount(payment.getAmount())
-                        .currency("INR")
-                        .key(razorpayApiKey)
-                        .build())
-                .toList();
+        return paymentRepository.findAllByUserId(userId).stream().map(this::toDto).toList();
     }
 
     @Override
     public List<PaymentResponseDto> getAllPayments() {
-        List<Payment> payments = paymentRepository.findAll();
-        return payments.stream()
-                .map(payment -> PaymentResponseDto.builder()
-                        .orderId(payment.getRazorpayOrderId())
-                        .amount(payment.getAmount())
-                        .currency("INR")
-                        .key(razorpayApiKey)
-                        .status(payment.getStatus() != null ? payment.getStatus().name() : null)
-                        .bookingId(payment.getBooking() != null ? payment.getBooking().getId() : null)
-                        .userEmail(
-                            payment.getBooking() != null && payment.getBooking().getUser() != null
-                            ? payment.getBooking().getUser().getEmail()
-                            : null
-                        )
-                        .paymentTime(payment.getPaymentTime())
-                        .build())
-                .toList();
+        return paymentRepository.findAll().stream().map(this::toDto).toList();
+    }
+
+    /** True if the order exists for the configured Razorpay key, is not paid and has the expected amount. */
+    private boolean isReusableOrder(String orderId, long expectedAmountInPaise) {
+        try {
+            Order order = razorpayClient.orders.fetch(orderId);
+            Object status = order.get("status");
+            Object amount = order.get("amount");
+            return !"paid".equals(String.valueOf(status))
+                    && amount instanceof Number n
+                    && n.longValue() == expectedAmountInPaise;
+        } catch (RazorpayException e) {
+            return false; // not found under this key (e.g. keys were rotated) or API error
+        }
+    }
+
+    private double calculateAmount(Booking booking) {
+        long days = ChronoUnit.DAYS.between(booking.getStartDate(), booking.getEndDate()) + 1;
+        return booking.getCar().getPricePerDay() * days;
+    }
+
+    private PaymentResponseDto checkoutResponse(String orderId, double amount) {
+        return PaymentResponseDto.builder()
+                .orderId(orderId)
+                .amount(amount)
+                .currency(CURRENCY)
+                .key(razorpayApiKey)
+                .status(PaymentStatus.PENDING.name())
+                .build();
+    }
+
+    private PaymentResponseDto toDto(Payment payment) {
+        Booking booking = payment.getBooking();
+        return PaymentResponseDto.builder()
+                .orderId(payment.getRazorpayOrderId())
+                .amount(payment.getAmount())
+                .currency(CURRENCY)
+                .key(razorpayApiKey)
+                .status(payment.getStatus() != null ? payment.getStatus().name() : null)
+                .bookingId(booking != null ? booking.getId() : null)
+                .userEmail(booking != null && booking.getUser() != null ? booking.getUser().getEmail() : null)
+                .paymentTime(payment.getPaymentTime())
+                .build();
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 }

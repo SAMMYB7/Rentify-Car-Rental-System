@@ -2,20 +2,16 @@ package com.carrental.sdp.carrental.controller;
 
 import com.carrental.sdp.carrental.dto.PaymentRequestDto;
 import com.carrental.sdp.carrental.dto.PaymentResponseDto;
+import com.carrental.sdp.carrental.model.User;
 import com.carrental.sdp.carrental.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.beans.factory.annotation.Value;
-
-import jakarta.servlet.http.HttpServletRequest;
-import java.util.Map;
-import com.razorpay.Utils;
-import com.carrental.sdp.carrental.model.User;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/payments")
@@ -24,59 +20,42 @@ public class PaymentController {
 
     private final PaymentService paymentService;
 
-    @Value("${razorpay.key_secret}")
-    private String razorpaySecret;
-
-    // Create Razorpay order for a booking
+    // Create (or reuse) a Razorpay order for one of the caller's own bookings
     @PostMapping("/create")
-    public ResponseEntity<PaymentResponseDto> createPaymentOrder(@RequestBody PaymentRequestDto request) {
-        PaymentResponseDto response = paymentService.createPaymentOrder(request.getBookingId());
-        return ResponseEntity.ok(response);
+    public ResponseEntity<PaymentResponseDto> createPaymentOrder(
+            @RequestBody PaymentRequestDto request,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(paymentService.createPaymentOrder(request.getBookingId(), user.getId()));
     }
 
-    // Payment verification endpoint
+    // Verify the Razorpay signature for one of the caller's own orders
     @PostMapping("/verify")
-    public ResponseEntity<String> verifyPayment(@RequestBody Map<String, String> payload) {
-        String razorpayOrderId = payload.get("razorpay_order_id");
-        String razorpayPaymentId = payload.get("razorpay_payment_id");
-        String razorpaySignature = payload.get("razorpay_signature");
-
-        try {
-            org.json.JSONObject params = new org.json.JSONObject();
-            params.put("razorpay_order_id", razorpayOrderId);
-            params.put("razorpay_payment_id", razorpayPaymentId);
-            params.put("razorpay_signature", razorpaySignature);
-
-            com.razorpay.Utils.verifyPaymentSignature(params, razorpaySecret);
-
-            paymentService.updatePaymentStatus(razorpayOrderId, "SUCCESS");
-            return ResponseEntity.ok("Payment verified and marked as SUCCESS");
-        } catch (Exception e) {
-            paymentService.updatePaymentStatus(razorpayOrderId, "FAILED");
-            return ResponseEntity.status(400).body("Payment verification failed: " + e.getMessage());
-        }
+    public ResponseEntity<Map<String, String>> verifyPayment(
+            @RequestBody Map<String, String> payload,
+            @AuthenticationPrincipal User user) {
+        paymentService.verifyPayment(
+                payload.get("razorpay_order_id"),
+                payload.get("razorpay_payment_id"),
+                payload.get("razorpay_signature"),
+                user);
+        return ResponseEntity.ok(Map.of("message", "Payment verified successfully."));
     }
 
     @GetMapping("/booking/{bookingId}")
     public ResponseEntity<PaymentResponseDto> getPaymentByBooking(
             @PathVariable Long bookingId,
-            Authentication authentication) {
-        User user = (User) authentication.getPrincipal();
-        PaymentResponseDto response = paymentService.getPaymentByBooking(bookingId, user);
-        return ResponseEntity.ok(response);
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(paymentService.getPaymentByBooking(bookingId, user));
     }
 
     @GetMapping("/my")
-    public ResponseEntity<List<PaymentResponseDto>> getMyPayments(Authentication authentication) {
-        User user = (User) authentication.getPrincipal();
-        List<PaymentResponseDto> payments = paymentService.getPaymentsForUser(user.getId());
-        return ResponseEntity.ok(payments);
+    public ResponseEntity<List<PaymentResponseDto>> getMyPayments(@AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(paymentService.getPaymentsForUser(user.getId()));
     }
 
     @GetMapping("/all")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<PaymentResponseDto>> getAllPayments() {
-        List<PaymentResponseDto> payments = paymentService.getAllPayments();
-        return ResponseEntity.ok(payments);
+        return ResponseEntity.ok(paymentService.getAllPayments());
     }
 }
