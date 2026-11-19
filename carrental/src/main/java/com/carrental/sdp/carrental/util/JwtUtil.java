@@ -1,58 +1,69 @@
 package com.carrental.sdp.carrental.util;
 
 import com.carrental.sdp.carrental.model.User;
-import io.jsonwebtoken.*;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.security.Key;
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
 @Component
 public class JwtUtil {
 
+    private static final long EXPIRATION_MILLIS = 1000L * 60 * 60 * 24; // 24 hours
+
     @Value("${jwt.secret}")
     private String secret;
 
-    private Key key;
-
-    private final long expirationMillis = 1000 * 60 * 60 * 24; // 24 hours
+    private SecretKey key;
 
     @PostConstruct
     public void init() {
-        key = Keys.hmacShaKeyFor(secret.getBytes());
+        key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
     public String generateToken(User user) {
+        Date now = new Date();
         return Jwts.builder()
-                .setSubject(user.getEmail())
+                .subject(user.getEmail())
                 .claim("role", user.getRole().name())
-                .claim("name", user.getName()) // <-- Add this line
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + expirationMillis))
-                .signWith(key, SignatureAlgorithm.HS256)
+                .claim("name", user.getName())
+                .issuedAt(now)
+                .expiration(new Date(now.getTime() + EXPIRATION_MILLIS))
+                .signWith(key)
                 .compact();
     }
 
+    /**
+     * Parses and verifies the token (signature and expiry).
+     *
+     * @throws JwtException             if the token is invalid, tampered with or expired
+     * @throws IllegalArgumentException if the token is null or blank
+     */
+    public Claims parseClaims(String token) {
+        return Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+
     public String extractUsername(String token) {
-        return getClaims(token).getSubject();
+        return parseClaims(token).getSubject();
     }
 
     public boolean isTokenValid(String token, User user) {
-        return extractUsername(token).equals(user.getEmail()) && !isTokenExpired(token);
-    }
-
-    private boolean isTokenExpired(String token) {
-        return getClaims(token).getExpiration().before(new Date());
-    }
-
-    private Claims getClaims(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(key)
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
+        try {
+            Claims claims = parseClaims(token); // expired tokens fail here
+            return user.getEmail().equals(claims.getSubject());
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
     }
 }

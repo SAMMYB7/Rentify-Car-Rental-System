@@ -129,7 +129,7 @@ public class CarServiceImpl implements CarService {
             Optional<Double> minPrice,
             Optional<Double> maxPrice
     ) {
-        Specification<Car> spec = Specification.where(null);
+        Specification<Car> spec = Specification.unrestricted();
 
         if (model.isPresent()) {
             spec = spec.and(CarSpecifications.hasModel(model.get()));
