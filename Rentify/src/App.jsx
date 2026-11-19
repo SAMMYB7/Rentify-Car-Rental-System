@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { FaMapMarkerAlt, FaPhone, FaEnvelope } from "react-icons/fa";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import Login from "./pages/Login";
