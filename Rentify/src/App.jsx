@@ -4,6 +4,8 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/user/Dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -31,6 +33,8 @@ function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/cars" element={<Cars />} />
           <Route path="/cars/:id" element={<CarDetails />} />
           <Route path="/all-bookings" element={<AllBookings />} />

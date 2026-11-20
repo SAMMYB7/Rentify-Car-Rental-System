@@ -1,69 +1,94 @@
 package com.carrental.sdp.carrental.service;
 
-import com.carrental.sdp.carrental.model.User;
 import com.carrental.sdp.carrental.model.PasswordResetToken;
-import com.carrental.sdp.carrental.repository.UserRepository;
+import com.carrental.sdp.carrental.model.User;
 import com.carrental.sdp.carrental.repository.PasswordResetTokenRepository;
+import com.carrental.sdp.carrental.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.mail.MailException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ForgotPasswordService {
+
+    private static final int TOKEN_VALID_HOURS = 1;
+
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository tokenRepository;
     private final EmailService emailService;
+    private final PasswordEncoder passwordEncoder;
+
+    /** Base URL of the React app; the reset link in the email points here. */
+    @Value("${app.frontend-url:http://localhost:5173}")
+    private String frontendUrl;
 
     @Transactional
     public void processForgotPassword(String email) {
-        Optional<User> userOpt = userRepository.findByEmail(email);
+        Optional<User> userOpt = userRepository.findByEmail(email.trim());
         if (userOpt.isEmpty()) {
-            // For security, do not reveal if user exists
+            // For security, do not reveal whether the account exists.
             return;
         }
         User user = userOpt.get();
 
-        // Remove any previous tokens for this user
+        // Only the newest link should work.
         tokenRepository.deleteByUser(user);
 
-        // Generate and save new token
         String token = UUID.randomUUID().toString();
-        PasswordResetToken resetToken = PasswordResetToken.builder()
+        tokenRepository.save(PasswordResetToken.builder()
                 .token(token)
                 .user(user)
-                .expiryDate(LocalDateTime.now().plusHours(1)) // 1 hour expiry
-                .build();
-        tokenRepository.save(resetToken);
+                .expiryDate(LocalDateTime.now().plusHours(TOKEN_VALID_HOURS))
+                .build());
 
-        // Send email
-        String resetLink = "http://localhost:3000/reset-password?token=" + token;
-        String subject = "Password Reset Request";
+        String resetLink = frontendUrl.replaceAll("/+$", "") + "/reset-password?token=" + token;
         String text = String.format(
-                "Hi %s,\n\nClick the link below to reset your password:\n%s\n\nIf you did not request this, ignore this email.",
-                user.getName(), resetLink
-        );
-        emailService.sendSimpleEmail(email, subject, text);
+                "Hi %s,%n%n"
+                        + "We received a request to reset your Rentify password.%n"
+                        + "Click the link below to choose a new password (valid for %d hour):%n%n"
+                        + "%s%n%n"
+                        + "If you did not request this, you can safely ignore this email.%n%n"
+                        + "- The Rentify Team",
+                user.getName(), TOKEN_VALID_HOURS, resetLink);
+
+        try {
+            emailService.sendSimpleEmail(user.getEmail(), "Reset your Rentify password", text);
+        } catch (MailException e) {
+            // Rolls back the saved token too, so a link that was never delivered is not left behind.
+            log.error("Failed to send password reset email to {}", user.getEmail(), e);
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "We could not send the reset email right now. Please try again later.");
+        }
     }
 
+    @Transactional
     public void resetPassword(String token, String newPassword) {
         PasswordResetToken resetToken = tokenRepository.findByToken(token)
-                .orElseThrow(() -> new RuntimeException("Invalid or expired token."));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "This reset link is invalid or has already been used."));
 
         if (resetToken.getExpiryDate().isBefore(LocalDateTime.now())) {
             tokenRepository.delete(resetToken);
-            throw new RuntimeException("Token has expired.");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "This reset link has expired. Please request a new one.");
         }
 
         User user = resetToken.getUser();
-        user.setPassword(new BCryptPasswordEncoder().encode(newPassword));
+        user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
 
-        tokenRepository.delete(resetToken); // Invalidate token after use
+        tokenRepository.delete(resetToken); // single use
     }
 }
