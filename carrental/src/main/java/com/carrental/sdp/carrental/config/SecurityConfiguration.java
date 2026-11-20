@@ -48,6 +48,7 @@ public class SecurityConfiguration {
                     "/api/v1/auth/reset-password"
                 ).permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/cars/**").permitAll() // public car viewing
+                .requestMatchers(HttpMethod.GET, "/api/reviews").permitAll() // public car reviews
                 .requestMatchers("/error").permitAll() // let real error statuses through instead of a 401
                 .anyRequest().authenticated()
             )

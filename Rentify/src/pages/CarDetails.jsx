@@ -20,16 +20,13 @@ const CarDetails = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      try {
-        const [carRes, reviewsRes] = await Promise.all([
-          api.get(`/cars/${id}`),
-          api.get(`/reviews?carId=${id}`)
-        ]);
-        setCar(carRes.data);
-        setReviews(reviewsRes.data);
-      } catch {
-        setCar(null);
-      }
+      // Load car and reviews independently: a reviews failure must not hide the car.
+      const [carResult, reviewsResult] = await Promise.allSettled([
+        api.get(`/cars/${id}`),
+        api.get("/reviews", { params: { carId: id } }),
+      ]);
+      setCar(carResult.status === "fulfilled" ? carResult.value.data : null);
+      setReviews(reviewsResult.status === "fulfilled" ? reviewsResult.value.data : []);
       setLoading(false);
     };
     fetchData();
