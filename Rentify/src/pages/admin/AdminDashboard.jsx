@@ -303,10 +303,8 @@ const AdminDashboard = () => {
         
         const totalDuration = monthlyBookings.reduce((sum, booking) => {
           if (booking.startDate && booking.endDate) {
-            const start = new Date(booking.startDate);
-            const end = new Date(booking.endDate);
-            const duration = (end - start) / (1000 * 60 * 60 * 24); // Duration in days
-            return sum + duration;
+            // rentalDays comes from the backend; both start and end dates count
+            return sum + (booking.rentalDays ?? 0);
           }
           return sum;
         }, 0);

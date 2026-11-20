@@ -57,11 +57,7 @@ public class BookingServiceImpl implements BookingService {
 
         Booking saved = bookingRepository.save(booking);
 
-        // Calculate total price
-        long days = java.time.temporal.ChronoUnit.DAYS.between(saved.getStartDate(), saved.getEndDate()) + 1;
-        double totalPrice = saved.getCar().getPricePerDay() * days;
-
-        // Prepare email details
+        // Prepare email details (total price: saved.totalPrice())
         // String to = saved.getUser().getEmail();
         // String subject = "Booking Confirmation - Car Rental";
         // String text = String.format(
@@ -156,16 +152,6 @@ public class BookingServiceImpl implements BookingService {
     }
 
     private BookingResponseDto toDto(Booking booking) {
-        BookingResponseDto dto = new BookingResponseDto();
-        dto.setId(booking.getId());
-        dto.setUserId(booking.getUser().getId());
-        dto.setCarId(booking.getCar().getId());
-        dto.setCarModel(booking.getCar().getModel());
-        dto.setStartDate(booking.getStartDate());
-        dto.setEndDate(booking.getEndDate());
-        dto.setStatus(booking.getStatus());
-        dto.setCreatedAt(booking.getCreatedAt());
-        dto.setUpdatedAt(booking.getUpdatedAt());
-        return dto;
+        return BookingResponseDto.from(booking);
     }
 }

@@ -36,19 +36,7 @@ public class UserServiceImpl implements UserService {
         List<Booking> bookings = bookingRepository.findAll().stream()
                 .filter(b -> b.getUser().getId().equals(user.getId()))
                 .collect(Collectors.toList());
-        return bookings.stream().map(b -> {
-            BookingResponseDto dto = new BookingResponseDto();
-            dto.setId(b.getId());
-            dto.setUserId(b.getUser().getId());
-            dto.setCarId(b.getCar().getId());
-            dto.setCarModel(b.getCar().getModel());
-            dto.setStartDate(b.getStartDate());
-            dto.setEndDate(b.getEndDate());
-            dto.setStatus(b.getStatus());
-            dto.setCreatedAt(b.getCreatedAt());
-            dto.setUpdatedAt(b.getUpdatedAt());
-            return dto;
-        }).collect(Collectors.toList());
+        return bookings.stream().map(BookingResponseDto::from).collect(Collectors.toList());
     }
 
     @Override

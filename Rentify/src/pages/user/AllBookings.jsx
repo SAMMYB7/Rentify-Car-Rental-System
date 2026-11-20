@@ -1,75 +1,19 @@
 import { useEffect, useState } from "react";
 import api from "../../api/axios";
-import { useAuth } from "../../context/AuthContext";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FaCar, FaCalendarAlt, FaArrowLeft, FaCheckCircle, FaClock, FaTimes, FaRupeeSign } from "react-icons/fa";
 
 const AllBookings = () => {
-  const { user } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchBookings = async () => {
       try {
+        // Each booking already includes carBrand, rentalDays and totalPrice from the backend.
         const res = await api.get("/users/bookings");
-        // Enhanced bookings with calculated total amount if not provided
-        const enhancedBookings = await Promise.all(res.data.map(async (booking) => {
-          // If booking already has totalAmount, use it
-          if (booking.totalAmount) {
-            return booking;
-          }
-          
-          // If booking has pricePerDay but no totalAmount, calculate it
-          if (booking.pricePerDay) {
-            const start = new Date(booking.startDate);
-            const end = new Date(booking.endDate);
-            const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
-            return {
-              ...booking,
-              calculatedTotal: booking.pricePerDay * days
-            };
-          }
-          
-          // If neither totalAmount nor pricePerDay exists, try to fetch payment data
-          if (booking.status === "PAID") {
-            try {
-              const paymentRes = await api.get(`/payments/booking/${booking.id}`);
-              if (paymentRes.data && paymentRes.data.amount) {
-                return {
-                  ...booking,
-                  calculatedTotal: paymentRes.data.amount
-                };
-              }
-            } catch (err) {
-              console.log("Could not fetch payment for booking", booking.id);
-            }
-          }
-          
-          // If car data is needed for price calculation
-          if (!booking.pricePerDay && booking.carId) {
-            try {
-              const carRes = await api.get(`/cars/${booking.carId}`);
-              if (carRes.data && carRes.data.pricePerDay) {
-                const start = new Date(booking.startDate);
-                const end = new Date(booking.endDate);
-                const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
-                return {
-                  ...booking,
-                  pricePerDay: carRes.data.pricePerDay,
-                  calculatedTotal: carRes.data.pricePerDay * days
-                };
-              }
-            } catch (err) {
-              console.log("Could not fetch car data for booking", booking.id);
-            }
-          }
-          
-          return booking;
-        }));
-        
-        setBookings(enhancedBookings);
+        setBookings(res.data);
       } catch (err) {
         console.error("Error fetching bookings:", err);
         // handle error or redirect to login
@@ -145,10 +89,10 @@ const AllBookings = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {bookings.map((booking) => {
-                    // Calculate number of days
+                    // Days and total come from the backend (same formula used when charging)
                     const start = new Date(booking.startDate);
                     const end = new Date(booking.endDate);
-                    const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+                    const days = booking.rentalDays;
                     
                     // Format dates for display
                     const startFormatted = start.toLocaleDateString('en-US', {
@@ -197,13 +141,9 @@ const AllBookings = () => {
                           <div className="flex items-center">
                             <FaRupeeSign className="text-gray-500 mr-1" />
                             <span className="font-medium">
-                              {booking.totalAmount ? 
-                                booking.totalAmount.toLocaleString() : 
-                                booking.calculatedTotal ? 
-                                booking.calculatedTotal.toLocaleString() : 
-                                booking.pricePerDay ? 
-                                (booking.pricePerDay * days).toLocaleString() : 
-                                "N/A"}
+                              {booking.totalPrice != null
+                                ? booking.totalPrice.toLocaleString("en-IN")
+                                : "N/A"}
                             </span>
                           </div>
                         </td>

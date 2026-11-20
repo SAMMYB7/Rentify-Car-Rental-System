@@ -46,4 +46,14 @@ public class Booking {
     protected void onUpdate() {
         this.updatedAt = LocalDateTime.now();
     }
+
+    /** Number of rental days. Both the start and end date count (20 Nov - 21 Nov = 2 days). */
+    public long rentalDays() {
+        return java.time.temporal.ChronoUnit.DAYS.between(startDate, endDate) + 1;
+    }
+
+    /** Total price in rupees. Single source of truth for what is displayed and what is charged. */
+    public double totalPrice() {
+        return car.getPricePerDay() * rentalDays();
+    }
 }

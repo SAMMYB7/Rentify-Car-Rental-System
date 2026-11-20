@@ -22,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
@@ -67,7 +66,7 @@ public class PaymentServiceImpl implements PaymentService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This booking has already been paid.");
         }
 
-        long amountInPaise = Math.round(calculateAmount(booking) * 100);
+        long amountInPaise = Math.round(booking.totalPrice() * 100);
         double amount = amountInPaise / 100.0;
 
         // Reuse a pending order (e.g. the user closed the checkout and retried), but only if Razorpay
@@ -195,11 +194,6 @@ public class PaymentServiceImpl implements PaymentService {
         } catch (RazorpayException e) {
             return false; // not found under this key (e.g. keys were rotated) or API error
         }
-    }
-
-    private double calculateAmount(Booking booking) {
-        long days = ChronoUnit.DAYS.between(booking.getStartDate(), booking.getEndDate()) + 1;
-        return booking.getCar().getPricePerDay() * days;
     }
 
     private PaymentResponseDto checkoutResponse(String orderId, double amount) {
