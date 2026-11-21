@@ -3,6 +3,11 @@ import api from "../../api/axios";
 import { motion } from "framer-motion";
 import { FaUserEdit, FaTrash, FaUsersCog } from "react-icons/fa";
 
+const getErrorMessage = (err, fallback) =>
+  err.response?.data?.message ||
+  (typeof err.response?.data === "string" && err.response.data) ||
+  fallback;
+
 const AdminUsers = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -40,7 +45,7 @@ const AdminUsers = () => {
       setUsers(users.filter(user => user.id !== userId));
     } catch (error) {
       console.error("Failed to delete user:", error);
-      alert("Failed to delete user. Please try again.");
+      alert(getErrorMessage(error, "Failed to delete user. Please try again."));
     }
   };
 
@@ -52,7 +57,7 @@ const AdminUsers = () => {
       ));
     } catch (error) {
       console.error("Failed to update user role:", error);
-      alert("Failed to update user role. Please try again.");
+      alert(getErrorMessage(error, "Failed to update user role. Please try again."));
     }
   };
 
@@ -176,7 +181,7 @@ const UserEditModal = ({ user, onClose, onSave }) => {
       onSave({ ...user, ...res.data });
     } catch (error) {
       console.error("Failed to update user:", error);
-      setError("Failed to update user. Please try again.");
+      setError(getErrorMessage(error, "Failed to update user. Please try again."));
     } finally {
       setLoading(false);
     }

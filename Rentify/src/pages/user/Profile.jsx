@@ -3,8 +3,15 @@ import api from "../../api/axios";
 import { motion } from "framer-motion";
 import { FaUser, FaEnvelope, FaIdCard, FaEdit } from "react-icons/fa";
 import { Link } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+
+const getErrorMessage = (err, fallback) =>
+  err.response?.data?.message ||
+  (typeof err.response?.data === "string" && err.response.data) ||
+  fallback;
 
 const Profile = () => {
+  const { login } = useAuth();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
@@ -48,11 +55,14 @@ const Profile = () => {
     
     try {
       const res = await api.put("/users/me", formData);
-      setProfile(res.data);
+      // The login token is tied to the email; the backend sends a new one when the email changes.
+      if (res.data.token) login(res.data.token);
+      setProfile(res.data.user);
+      setFormData({ name: res.data.user.name || "", email: res.data.user.email || "" });
       setSuccess("Profile updated successfully!");
       setEditMode(false);
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to update profile");
+      setError(getErrorMessage(err, "Failed to update profile"));
     }
   };
 
