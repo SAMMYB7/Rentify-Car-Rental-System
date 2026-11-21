@@ -24,7 +24,7 @@ public class BookingServiceImpl implements BookingService {
     private final BookingRepository bookingRepository;
     private final CarRepository carRepository;
     private final UserRepository userRepository;
-    private final EmailService emailService; // <-- Add this line
+    private final EmailService emailService; // used by the (currently disabled) booking confirmation email
 
     @Override
     @Transactional
@@ -34,17 +34,9 @@ public class BookingServiceImpl implements BookingService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
-        if (!isCarAvailable(car.getId(), dto.getStartDate(), dto.getEndDate())) {
-            throw new ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Car is not available for those dates."
-            );
-        }
-        if (dto.getStartDate().isAfter(dto.getEndDate())) {
-            throw new ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Start date must be before or equal to end date."
-            );
+        validateDateOrder(dto);
+        if (hasOverlap(car, dto.getStartDate(), dto.getEndDate(), null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Car is not available for those dates.");
         }
 
         Booking booking = Booking.builder()
@@ -80,22 +72,21 @@ public class BookingServiceImpl implements BookingService {
                 .orElseThrow(() -> new EntityNotFoundException("Booking not found"));
 
         if (!booking.getUser().getId().equals(userId)) {
-            throw new RuntimeException("Unauthorized");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only change your own bookings.");
         }
-        if (booking.getStatus() == BookingStatus.COMPLETED) {
-            throw new RuntimeException("Cannot modify a completed booking.");
+        // Paid bookings would need a re-payment/refund for a new price; cancelled/completed are final.
+        if (booking.getStatus() != BookingStatus.BOOKED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Only unpaid bookings can be changed (status: " + booking.getStatus() + ").");
         }
-        if (!isCarAvailable(booking.getCar().getId(), dto.getStartDate(), dto.getEndDate())) {
-            throw new ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Car is not available for those dates."
-            );
+        if (dto.getCarId() != null && !dto.getCarId().equals(booking.getCar().getId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The car of a booking cannot be changed. Cancel it and book the other car instead.");
         }
-        if (dto.getStartDate().isAfter(dto.getEndDate())) {
-            throw new ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Start date must be before or equal to end date."
-            );
+        validateDateOrder(dto);
+        // Exclude this booking itself, otherwise it always "overlaps" with its own old dates.
+        if (hasOverlap(booking.getCar(), dto.getStartDate(), dto.getEndDate(), booking.getId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Car is not available for those dates.");
         }
 
         booking.setStartDate(dto.getStartDate());
@@ -110,16 +101,16 @@ public class BookingServiceImpl implements BookingService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new EntityNotFoundException("Booking not found"));
 
-        // Fetch the user (you may need to inject UserRepository if not already)
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
         // Allow if booking owner or admin
-        if (!booking.getUser().getId().equals(userId) && !user.getRole().name().equals("ADMIN")) {
-            throw new RuntimeException("Unauthorized");
+        if (!booking.getUser().getId().equals(userId) && user.getRole() != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only cancel your own bookings.");
         }
-        if (booking.getStatus() == BookingStatus.COMPLETED) {
-            throw new RuntimeException("Cannot cancel a completed booking.");
+        if (booking.getStatus() == BookingStatus.CANCELLED || booking.getStatus() == BookingStatus.COMPLETED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "This booking is already " + booking.getStatus().name().toLowerCase() + ".");
         }
         booking.setStatus(BookingStatus.CANCELLED);
         bookingRepository.save(booking);
@@ -129,9 +120,23 @@ public class BookingServiceImpl implements BookingService {
     public boolean isCarAvailable(Long carId, LocalDate start, LocalDate end) {
         Car car = carRepository.findById(carId)
                 .orElseThrow(() -> new EntityNotFoundException("Car not found"));
-        return !bookingRepository.existsByCarAndStatusNotAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
-                car, BookingStatus.CANCELLED, end, start
-        );
+        return !hasOverlap(car, start, end, null);
+    }
+
+    /** Overlap with any non-cancelled booking of the car, optionally ignoring one booking. */
+    private boolean hasOverlap(Car car, LocalDate start, LocalDate end, Long excludedBookingId) {
+        return excludedBookingId == null
+                ? bookingRepository.existsByCarAndStatusNotAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+                        car, BookingStatus.CANCELLED, end, start)
+                : bookingRepository.existsByCarAndStatusNotAndIdNotAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+                        car, BookingStatus.CANCELLED, excludedBookingId, end, start);
+    }
+
+    private static void validateDateOrder(BookingRequestDto dto) {
+        if (dto.getStartDate().isAfter(dto.getEndDate())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Start date must be before or equal to end date.");
+        }
     }
 
     @Override
