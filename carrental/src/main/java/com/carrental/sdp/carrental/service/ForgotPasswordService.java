@@ -4,6 +4,7 @@ import com.carrental.sdp.carrental.model.PasswordResetToken;
 import com.carrental.sdp.carrental.model.User;
 import com.carrental.sdp.carrental.repository.PasswordResetTokenRepository;
 import com.carrental.sdp.carrental.repository.UserRepository;
+import com.carrental.sdp.carrental.util.EmailTemplates;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -54,17 +55,13 @@ public class ForgotPasswordService {
                 .build());
 
         String resetLink = frontendUrl.replaceAll("/+$", "") + "/reset-password?token=" + token;
-        String text = String.format(
-                "Hi %s,%n%n"
-                        + "We received a request to reset your Rentify password.%n"
-                        + "Click the link below to choose a new password (valid for %d hour):%n%n"
-                        + "%s%n%n"
-                        + "If you did not request this, you can safely ignore this email.%n%n"
-                        + "- The Rentify Team",
-                user.getName(), TOKEN_VALID_HOURS, resetLink);
 
         try {
-            emailService.sendSimpleEmail(user.getEmail(), "Reset your Rentify password", text);
+            emailService.sendHtmlEmail(
+                    user.getEmail(),
+                    "Reset your Rentify password",
+                    EmailTemplates.passwordResetText(user.getName(), resetLink, TOKEN_VALID_HOURS),
+                    EmailTemplates.passwordResetHtml(user.getName(), resetLink, TOKEN_VALID_HOURS));
         } catch (MailException e) {
             // Rolls back the saved token too, so a link that was never delivered is not left behind.
             log.error("Failed to send password reset email to {}", user.getEmail(), e);
