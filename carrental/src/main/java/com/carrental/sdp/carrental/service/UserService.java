@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.service;
 
+import java.util.UUID;
+
 import com.carrental.sdp.carrental.dto.BookingResponseDto;
 import com.carrental.sdp.carrental.dto.ProfileUpdateResponse;
 import com.carrental.sdp.carrental.dto.UserResponseDto;
@@ -20,11 +22,11 @@ public interface UserService {
     ProfileUpdateResponse updateProfile(User currentUser, UserUpdateRequest request);
 
     /** Admin edits another user's name/email. */
-    UserResponseDto updateUser(Long userId, UserUpdateRequest request);
+    UserResponseDto updateUser(UUID userId, UserUpdateRequest request);
 
     /** Admin changes another user's role. */
-    UserResponseDto updateRole(Long userId, Role role, User admin);
+    UserResponseDto updateRole(UUID userId, Role role, User admin);
 
     /** Admin deletes a user without bookings. */
-    void deleteUser(Long userId, User admin);
+    void deleteUser(UUID userId, User admin);
 }

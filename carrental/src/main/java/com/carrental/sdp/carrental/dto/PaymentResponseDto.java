@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.dto;
 
+import java.util.UUID;
+
 import lombok.Builder;
 import lombok.Data;
 import java.time.LocalDateTime;
@@ -14,7 +16,7 @@ public class PaymentResponseDto {
 
     // Add these fields:
     private String status;
-    private Long bookingId;
+    private UUID bookingId;
     private String userEmail;
     private LocalDateTime paymentTime;
 }

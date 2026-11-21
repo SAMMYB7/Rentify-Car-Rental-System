@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.dto;
 
+import java.util.UUID;
+
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -10,10 +12,10 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReviewResponseDTO {
-    private Long id;
+    private UUID id;
     private int rating;
     private String comment;
-    private Long carId;
+    private UUID carId;
     private String carModel;
     private String username;
     private LocalDateTime createdAt;

@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.controller;
 
+import java.util.UUID;
+
 import com.carrental.sdp.carrental.dto.BookingResponseDto;
 import com.carrental.sdp.carrental.dto.ProfileUpdateResponse;
 import com.carrental.sdp.carrental.dto.RoleUpdateRequest;
@@ -61,7 +63,7 @@ public class UserController {
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserResponseDto> updateUser(
-            @PathVariable Long id,
+            @PathVariable UUID id,
             @Valid @RequestBody UserUpdateRequest request) {
         return ResponseEntity.ok(userService.updateUser(id, request));
     }
@@ -70,7 +72,7 @@ public class UserController {
     @PatchMapping("/{id}/role")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserResponseDto> updateRole(
-            @PathVariable Long id,
+            @PathVariable UUID id,
             @Valid @RequestBody RoleUpdateRequest request,
             @AuthenticationPrincipal User admin) {
         return ResponseEntity.ok(userService.updateRole(id, request.getRole(), admin));
@@ -79,7 +81,7 @@ public class UserController {
     // DELETE /api/users/{id} - Admin: delete a user (only if they have no bookings)
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id, @AuthenticationPrincipal User admin) {
+    public ResponseEntity<Void> deleteUser(@PathVariable UUID id, @AuthenticationPrincipal User admin) {
         userService.deleteUser(id, admin);
         return ResponseEntity.noContent().build();
     }

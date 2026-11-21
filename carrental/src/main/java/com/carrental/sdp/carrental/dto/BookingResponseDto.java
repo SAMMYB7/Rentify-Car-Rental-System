@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.dto;
 
+import java.util.UUID;
+
 import com.carrental.sdp.carrental.model.Booking;
 import com.carrental.sdp.carrental.model.BookingStatus;
 import lombok.Data;
@@ -9,9 +11,9 @@ import java.time.LocalDateTime;
 
 @Data
 public class BookingResponseDto {
-    private Long id;
-    private Long userId;
-    private Long carId;
+    private UUID id;
+    private UUID userId;
+    private UUID carId;
     private String carModel;
     private String carBrand;
     private LocalDate startDate;

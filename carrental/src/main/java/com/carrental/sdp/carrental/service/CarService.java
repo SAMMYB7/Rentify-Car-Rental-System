@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.service;
 
+import java.util.UUID;
+
 import com.carrental.sdp.carrental.dto.CarRequestDTO;
 import com.carrental.sdp.carrental.dto.CarResponseDTO;
 import org.springframework.web.multipart.MultipartFile;
@@ -10,8 +12,8 @@ import java.util.Optional;
 public interface CarService {
     CarResponseDTO createCar(CarRequestDTO carRequest, MultipartFile image);
     List<CarResponseDTO> getAllCars();
-    CarResponseDTO updateCar(Long id, CarRequestDTO carRequest, Optional<MultipartFile> image);
-    void deleteCar(Long id);
+    CarResponseDTO updateCar(UUID id, CarRequestDTO carRequest, Optional<MultipartFile> image);
+    void deleteCar(UUID id);
     List<CarResponseDTO> searchCars(
         Optional<String> model,
         Optional<String> brand,
@@ -20,5 +22,5 @@ public interface CarService {
         Optional<Double> minPrice,
         Optional<Double> maxPrice
     );
-    CarResponseDTO getCarById(Long id);
+    CarResponseDTO getCarById(UUID id);
 }

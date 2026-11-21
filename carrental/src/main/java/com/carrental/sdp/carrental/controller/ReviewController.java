@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.controller;
 
+import java.util.UUID;
+
 import com.carrental.sdp.carrental.dto.ReviewRequestDTO;
 import com.carrental.sdp.carrental.dto.ReviewResponseDTO;
 import com.carrental.sdp.carrental.service.ReviewService;
@@ -27,7 +29,7 @@ public class ReviewController {
     }
 
     @GetMapping
-    public List<ReviewResponseDTO> getReviews(@RequestParam Long carId) {
+    public List<ReviewResponseDTO> getReviews(@RequestParam UUID carId) {
         return reviewService.getReviewsByCarId(carId);
     }
 }

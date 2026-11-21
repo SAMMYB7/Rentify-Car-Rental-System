@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.service;
 
+import java.util.UUID;
+
 import com.carrental.sdp.carrental.dto.PaymentResponseDto;
 import com.carrental.sdp.carrental.model.Booking;
 import com.carrental.sdp.carrental.model.BookingStatus;
@@ -44,7 +46,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
-    public PaymentResponseDto createPaymentOrder(Long bookingId, Long userId) {
+    public PaymentResponseDto createPaymentOrder(UUID bookingId, UUID userId) {
         if (bookingId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "bookingId is required.");
         }
@@ -152,7 +154,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    public PaymentResponseDto getPaymentByBooking(Long bookingId, User user) {
+    public PaymentResponseDto getPaymentByBooking(UUID bookingId, User user) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found."));
 
@@ -161,7 +163,7 @@ public class PaymentServiceImpl implements PaymentService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot view this payment.");
         }
 
-        List<Payment> payments = paymentRepository.findByBookingOrderByIdDesc(booking);
+        List<Payment> payments = paymentRepository.findByBookingOrderByCreatedAtDesc(booking);
         Payment payment = payments.stream()
                 .filter(p -> p.getStatus() == PaymentStatus.SUCCESS)
                 .findFirst()
@@ -173,7 +175,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    public List<PaymentResponseDto> getPaymentsForUser(Long userId) {
+    public List<PaymentResponseDto> getPaymentsForUser(UUID userId) {
         return paymentRepository.findAllByUserId(userId).stream().map(this::toDto).toList();
     }
 

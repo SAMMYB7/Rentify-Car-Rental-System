@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.service;
 
+import java.util.UUID;
+
 import com.carrental.sdp.carrental.dto.ReviewRequestDTO;
 import com.carrental.sdp.carrental.dto.ReviewResponseDTO;
 import com.carrental.sdp.carrental.model.Car;
@@ -50,7 +52,7 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     @Override
-    public List<ReviewResponseDTO> getReviewsByCarId(Long carId) {
+    public List<ReviewResponseDTO> getReviewsByCarId(UUID carId) {
         List<Review> reviews = reviewRepository.findByCarId(carId);
         return reviews.stream().map(r -> ReviewResponseDTO.builder()
                 .id(r.getId())

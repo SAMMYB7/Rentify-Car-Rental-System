@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.dto;
 
+import java.util.UUID;
+
 import com.carrental.sdp.carrental.model.Role;
 import com.carrental.sdp.carrental.model.User;
 import lombok.Data;
@@ -8,7 +10,7 @@ import java.time.LocalDateTime;
 
 @Data
 public class UserResponseDto {
-    private Long id;
+    private UUID id;
     private String name;
     private String email;
     private Role role;

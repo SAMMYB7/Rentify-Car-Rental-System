@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.service;
 
+import java.util.UUID;
+
 import com.carrental.sdp.carrental.dto.CarRequestDTO;
 import com.carrental.sdp.carrental.dto.CarResponseDTO;
 import com.carrental.sdp.carrental.model.Car;
@@ -77,7 +79,7 @@ public class CarServiceImpl implements CarService {
     }
 
     @Override
-    public CarResponseDTO updateCar(Long id, CarRequestDTO carRequest, Optional<MultipartFile> image) {
+    public CarResponseDTO updateCar(UUID id, CarRequestDTO carRequest, Optional<MultipartFile> image) {
         Car car = carRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Car not found"));
 
@@ -108,7 +110,7 @@ public class CarServiceImpl implements CarService {
     }
 
     @Override
-    public void deleteCar(Long id) {
+    public void deleteCar(UUID id) {
         Car car = carRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Car not found"));
         // Delete image from Cloudinary if exists
@@ -157,7 +159,7 @@ public class CarServiceImpl implements CarService {
     }
 
     @Override
-    public CarResponseDTO getCarById(Long id) {
+    public CarResponseDTO getCarById(UUID id) {
         Car car = carRepository.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Car not found"));
         return toDTO(car);

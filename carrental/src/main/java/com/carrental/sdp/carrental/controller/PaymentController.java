@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.controller;
 
+import java.util.UUID;
+
 import com.carrental.sdp.carrental.dto.PaymentRequestDto;
 import com.carrental.sdp.carrental.dto.PaymentResponseDto;
 import com.carrental.sdp.carrental.model.User;
@@ -43,7 +45,7 @@ public class PaymentController {
 
     @GetMapping("/booking/{bookingId}")
     public ResponseEntity<PaymentResponseDto> getPaymentByBooking(
-            @PathVariable Long bookingId,
+            @PathVariable UUID bookingId,
             @AuthenticationPrincipal User user) {
         return ResponseEntity.ok(paymentService.getPaymentByBooking(bookingId, user));
     }

@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.dto;
 
+import java.util.UUID;
+
 import jakarta.validation.constraints.*;
 
 import lombok.Getter;
@@ -16,5 +18,5 @@ public class ReviewRequestDTO {
     private String comment;
 
     @NotNull
-    private Long carId;
+    private UUID carId;
 }

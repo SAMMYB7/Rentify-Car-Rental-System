@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.controller;
 
+import java.util.UUID;
+
 import com.carrental.sdp.carrental.dto.BookingRequestDto;
 import com.carrental.sdp.carrental.dto.BookingResponseDto;
 import com.carrental.sdp.carrental.model.User;
@@ -27,7 +29,7 @@ public class BookingController {
             Authentication authentication
     ) {
         User user = (User) authentication.getPrincipal();
-        Long userId = user.getId();
+        UUID userId = user.getId();
         BookingResponseDto response = bookingService.createBooking(userId, dto);
         return ResponseEntity.ok(response);
     }
@@ -35,12 +37,12 @@ public class BookingController {
     // Modify a booking
     @PutMapping("/{id}")
     public ResponseEntity<BookingResponseDto> modifyBooking(
-            @PathVariable Long id,
+            @PathVariable UUID id,
             @Valid @RequestBody BookingRequestDto dto,
             Authentication authentication
     ) {
         User user = (User) authentication.getPrincipal();
-        Long userId = user.getId();
+        UUID userId = user.getId();
         BookingResponseDto response = bookingService.modifyBooking(id, userId, dto);
         return ResponseEntity.ok(response);
     }
@@ -49,11 +51,11 @@ public class BookingController {
     @DeleteMapping("/{id}")
     
     public ResponseEntity<Void> cancelBooking(
-            @PathVariable Long id,
+            @PathVariable UUID id,
             Authentication authentication
     ) {
         User user = (User) authentication.getPrincipal();
-        Long userId = user.getId();
+        UUID userId = user.getId();
         bookingService.cancelBooking(id, userId);
         return ResponseEntity.noContent().build();
     }
@@ -62,7 +64,7 @@ public class BookingController {
     @GetMapping("/my")
     public ResponseEntity<List<BookingResponseDto>> getUserBookings(Authentication authentication) {
         User user = (User) authentication.getPrincipal();
-        Long userId = user.getId();
+        UUID userId = user.getId();
         return ResponseEntity.ok(bookingService.getUserBookings(userId));
     }
 

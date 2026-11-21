@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.service;
 
+import java.util.UUID;
+
 import com.carrental.sdp.carrental.dto.BookingResponseDto;
 import com.carrental.sdp.carrental.dto.ProfileUpdateResponse;
 import com.carrental.sdp.carrental.dto.UserResponseDto;
@@ -75,7 +77,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserResponseDto updateUser(Long userId, UserUpdateRequest request) {
+    public UserResponseDto updateUser(UUID userId, UserUpdateRequest request) {
         User user = findUser(userId);
         applyNameAndEmail(user, request);
         return UserResponseDto.from(userRepository.save(user));
@@ -83,7 +85,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserResponseDto updateRole(Long userId, Role role, User admin) {
+    public UserResponseDto updateRole(UUID userId, Role role, User admin) {
         if (admin.getId().equals(userId)) {
             // Stops an admin from removing their own admin access by accident.
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You cannot change your own role.");
@@ -95,7 +97,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public void deleteUser(Long userId, User admin) {
+    public void deleteUser(UUID userId, User admin) {
         if (admin.getId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You cannot delete your own account.");
         }
@@ -110,7 +112,7 @@ public class UserServiceImpl implements UserService {
         userRepository.delete(user);
     }
 
-    private User findUser(Long userId) {
+    private User findUser(UUID userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found."));
     }

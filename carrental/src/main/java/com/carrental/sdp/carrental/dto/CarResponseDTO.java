@@ -1,10 +1,12 @@
 package com.carrental.sdp.carrental.dto;
 
+import java.util.UUID;
+
 import lombok.Data;
 
 @Data
 public class CarResponseDTO {
-    private Long id;
+    private UUID id;
     private String model;
     private String brand;
     private String type;

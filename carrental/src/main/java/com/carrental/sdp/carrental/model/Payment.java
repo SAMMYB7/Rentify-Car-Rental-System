@@ -1,5 +1,10 @@
 package com.carrental.sdp.carrental.model;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.util.UUID;
+
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
@@ -14,8 +19,10 @@ import java.time.LocalDateTime;
 public class Payment {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @JdbcTypeCode(SqlTypes.CHAR) // stored as readable CHAR(36) text
+    @Column(length = 36, updatable = false, nullable = false)
+    private UUID id;
 
     @ManyToOne(optional = false)
     @JoinColumn(name = "booking_id")
@@ -32,4 +39,13 @@ public class Payment {
     private PaymentStatus status;
 
     private LocalDateTime paymentTime;
+
+    /** When the order was created. Used for "latest first" ordering, since UUIDs are random. */
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = LocalDateTime.now();
+    }
 }

@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.service;
 
+import java.util.UUID;
+
 import com.carrental.sdp.carrental.dto.BookingRequestDto;
 import com.carrental.sdp.carrental.dto.BookingResponseDto;
 import com.carrental.sdp.carrental.model.*;
@@ -28,7 +30,7 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     @Transactional
-    public BookingResponseDto createBooking(Long userId, BookingRequestDto dto) {
+    public BookingResponseDto createBooking(UUID userId, BookingRequestDto dto) {
         Car car = carRepository.findById(dto.getCarId())
                 .orElseThrow(() -> new EntityNotFoundException("Car not found"));
         User user = userRepository.findById(userId)
@@ -67,7 +69,7 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     @Transactional
-    public BookingResponseDto modifyBooking(Long bookingId, Long userId, BookingRequestDto dto) {
+    public BookingResponseDto modifyBooking(UUID bookingId, UUID userId, BookingRequestDto dto) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new EntityNotFoundException("Booking not found"));
 
@@ -97,7 +99,7 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     @Transactional
-    public void cancelBooking(Long bookingId, Long userId) {
+    public void cancelBooking(UUID bookingId, UUID userId) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new EntityNotFoundException("Booking not found"));
 
@@ -117,14 +119,14 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
-    public boolean isCarAvailable(Long carId, LocalDate start, LocalDate end) {
+    public boolean isCarAvailable(UUID carId, LocalDate start, LocalDate end) {
         Car car = carRepository.findById(carId)
                 .orElseThrow(() -> new EntityNotFoundException("Car not found"));
         return !hasOverlap(car, start, end, null);
     }
 
     /** Overlap with any non-cancelled booking of the car, optionally ignoring one booking. */
-    private boolean hasOverlap(Car car, LocalDate start, LocalDate end, Long excludedBookingId) {
+    private boolean hasOverlap(Car car, LocalDate start, LocalDate end, UUID excludedBookingId) {
         return excludedBookingId == null
                 ? bookingRepository.existsByCarAndStatusNotAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
                         car, BookingStatus.CANCELLED, end, start)
@@ -140,7 +142,7 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
-    public List<BookingResponseDto> getUserBookings(Long userId) {
+    public List<BookingResponseDto> getUserBookings(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
         return bookingRepository.findAll().stream()

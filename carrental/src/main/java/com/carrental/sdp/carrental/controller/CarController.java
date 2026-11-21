@@ -1,5 +1,7 @@
 package com.carrental.sdp.carrental.controller;
 
+import java.util.UUID;
+
 import com.carrental.sdp.carrental.dto.CarRequestDTO;
 import com.carrental.sdp.carrental.dto.CarResponseDTO;
 import com.carrental.sdp.carrental.service.CarService;
@@ -38,7 +40,7 @@ public class CarController {
 
     // Get car by id
     @GetMapping("/{id}")
-    public ResponseEntity<CarResponseDTO> getCarById(@PathVariable Long id) {
+    public ResponseEntity<CarResponseDTO> getCarById(@PathVariable UUID id) {
         CarResponseDTO car = carService.getCarById(id);
         return ResponseEntity.ok(car);
     }
@@ -47,7 +49,7 @@ public class CarController {
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<CarResponseDTO> updateCar(
-            @PathVariable Long id,
+            @PathVariable UUID id,
             @RequestPart("car") CarRequestDTO carRequest,
             @RequestPart(value = "image", required = false) MultipartFile image) {
         CarResponseDTO response = carService.updateCar(id, carRequest, Optional.ofNullable(image));
@@ -57,7 +59,7 @@ public class CarController {
     // Delete car
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> deleteCar(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteCar(@PathVariable UUID id) {
         carService.deleteCar(id);
         return ResponseEntity.noContent().build();
     }
