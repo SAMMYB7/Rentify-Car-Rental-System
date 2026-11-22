@@ -4,18 +4,23 @@ import java.util.UUID;
 
 import com.carrental.sdp.carrental.dto.BookingRequestDto;
 import com.carrental.sdp.carrental.dto.BookingResponseDto;
+import com.carrental.sdp.carrental.dto.CancellationResultDto;
 import com.carrental.sdp.carrental.model.*;
 import com.carrental.sdp.carrental.repository.BookingRepository;
 import com.carrental.sdp.carrental.repository.CarRepository;
+import com.carrental.sdp.carrental.repository.PaymentRepository;
 import com.carrental.sdp.carrental.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -26,7 +31,13 @@ public class BookingServiceImpl implements BookingService {
     private final BookingRepository bookingRepository;
     private final CarRepository carRepository;
     private final UserRepository userRepository;
-    private final EmailService emailService; // used by the (currently disabled) booking confirmation email
+    private final PaymentRepository paymentRepository;
+    private final PaymentService paymentService;
+    private final BookingConfirmationService bookingConfirmationService;
+
+    /** How long an unpaid booking holds the car before it is released automatically. */
+    @Value("${app.booking.unpaid-hold-minutes:30}")
+    private long unpaidHoldMinutes;
 
     @Override
     @Transactional
@@ -47,24 +58,11 @@ public class BookingServiceImpl implements BookingService {
                 .startDate(dto.getStartDate())
                 .endDate(dto.getEndDate())
                 .status(BookingStatus.BOOKED)
+                // Unpaid bookings hold the car only for a short time, so abandoned bookings don't block it.
+                .paymentDueAt(LocalDateTime.now().plusMinutes(unpaidHoldMinutes))
                 .build();
 
-        Booking saved = bookingRepository.save(booking);
-
-        // Prepare email details (total price: saved.totalPrice())
-        // String to = saved.getUser().getEmail();
-        // String subject = "Booking Confirmation - Car Rental";
-        // String text = String.format(
-        //     "Dear %s,\n\nYour booking is confirmed!\n\nCar: %s\nFrom: %s\nTo: %s\nTotal Price: ₹%.2f\n\nThank you for choosing us!",
-        //     saved.getUser().getName(),
-        //     saved.getCar().getModel(),
-        //     saved.getStartDate(),
-        //     saved.getEndDate(),
-        //     totalPrice
-        // );
-        // emailService.sendSimpleEmail(to, subject, text);
-
-        return toDto(saved);
+        return toDto(bookingRepository.save(booking));
     }
 
     @Override
@@ -76,10 +74,17 @@ public class BookingServiceImpl implements BookingService {
         if (!booking.getUser().getId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only change your own bookings.");
         }
-        // Paid bookings would need a re-payment/refund for a new price; cancelled/completed are final.
-        if (booking.getStatus() != BookingStatus.BOOKED) {
+        if (booking.getStatus() == BookingStatus.PAID) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Only unpaid bookings can be changed (status: " + booking.getStatus() + ").");
+                    "Paid bookings can't change dates. Cancel this booking (refund per our policy) and book again.");
+        }
+        CancellationPolicy.Quote quote = CancellationPolicy.evaluate(booking, LocalDateTime.now(), false);
+        if (!quote.editable()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, quote.note());
+        }
+        if (booking.getPaymentDueAt() != null && LocalDateTime.now().isAfter(booking.getPaymentDueAt())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "This unpaid booking has expired. Please book the car again.");
         }
         if (dto.getCarId() != null && !dto.getCarId().equals(booking.getCar().getId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -93,29 +98,60 @@ public class BookingServiceImpl implements BookingService {
 
         booking.setStartDate(dto.getStartDate());
         booking.setEndDate(dto.getEndDate());
-        Booking updated = bookingRepository.save(booking);
-        return toDto(updated);
+        return toDto(bookingRepository.save(booking));
     }
 
     @Override
     @Transactional
-    public void cancelBooking(UUID bookingId, UUID userId) {
+    public CancellationResultDto cancelBooking(UUID bookingId, UUID userId) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new EntityNotFoundException("Booking not found"));
-
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
-        // Allow if booking owner or admin
-        if (!booking.getUser().getId().equals(userId) && user.getRole() != Role.ADMIN) {
+        boolean isOwner = booking.getUser().getId().equals(userId);
+        boolean byAdmin = user.getRole() == Role.ADMIN;
+        if (!isOwner && !byAdmin) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only cancel your own bookings.");
         }
-        if (booking.getStatus() == BookingStatus.CANCELLED || booking.getStatus() == BookingStatus.COMPLETED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "This booking is already " + booking.getStatus().name().toLowerCase() + ".");
+
+        CancellationPolicy.Quote quote = CancellationPolicy.evaluate(booking, LocalDateTime.now(), byAdmin);
+        if (!quote.cancellable()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, quote.note());
         }
+
+        boolean wasPaid = booking.getStatus() == BookingStatus.PAID;
+        PaymentService.RefundResult refund = new PaymentService.RefundResult(null, 0);
+        if (wasPaid) {
+            // Refund FIRST: if Razorpay refuses, this throws and the booking stays as it is.
+            refund = paymentService.refundForCancellation(booking, quote.refund());
+            booking.setRefundAmount(refund.amount());
+        } else {
+            // Unpaid: retire any open checkout orders so they can't be paid later.
+            paymentRepository.findByBookingAndStatusIn(booking, EnumSet.of(PaymentStatus.PENDING))
+                    .forEach(p -> p.setStatus(PaymentStatus.FAILED));
+        }
+
         booking.setStatus(BookingStatus.CANCELLED);
+        booking.setCancelledAt(LocalDateTime.now());
+        booking.setPaymentDueAt(null);
         bookingRepository.save(booking);
+
+        double fee = wasPaid ? quote.fee() : 0;
+        boolean emailSent = bookingConfirmationService.sendCancellationEmail(
+                booking, wasPaid, refund.amount(), fee, refund.refundId(), byAdmin && !isOwner);
+
+        String message;
+        if (!wasPaid) {
+            message = "Your booking has been cancelled.";
+        } else if (refund.amount() > 0) {
+            message = String.format("Your booking has been cancelled. A refund of ₹%.2f has been initiated.",
+                    refund.amount());
+        } else {
+            message = "Your booking has been cancelled. No refund applies (cancellation fee).";
+        }
+        return new CancellationResultDto(booking.getId(), booking.getStatus(), refund.amount(), fee,
+                refund.refundId(), emailSent, message);
     }
 
     @Override
@@ -143,7 +179,7 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public List<BookingResponseDto> getUserBookings(UUID userId) {
-        User user = userRepository.findById(userId)
+        userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
         return bookingRepository.findAll().stream()
                 .filter(b -> b.getUser().getId().equals(userId))

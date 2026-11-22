@@ -37,11 +37,20 @@ public class Booking {
     private LocalDate endDate;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.VARCHAR) // plain VARCHAR, not a MySQL ENUM, so new statuses need no ALTER
+    @Column(nullable = false, length = 20)
     private BookingStatus status;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    /** Unpaid bookings hold the car only until this moment; then they are released automatically. */
+    private LocalDateTime paymentDueAt;
+
+    private LocalDateTime cancelledAt;
+
+    /** Amount refunded when a paid booking was cancelled (null if never paid/refunded). */
+    private Double refundAmount;
 
     @PrePersist
     protected void onCreate() {

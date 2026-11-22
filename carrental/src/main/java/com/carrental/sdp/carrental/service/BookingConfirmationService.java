@@ -77,6 +77,41 @@ public class BookingConfirmationService {
         }
     }
 
+    /**
+     * Sends the "booking cancelled" email (with refund details for paid bookings).
+     *
+     * @return true if the email was sent; never throws
+     */
+    public boolean sendCancellationEmail(Booking booking, boolean wasPaid, double refundAmount, double fee,
+                                         String refundId, boolean cancelledByRentify) {
+        try {
+            Car car = booking.getCar();
+            EmailTemplates.CancellationDetails details = new EmailTemplates.CancellationDetails(
+                    booking.getUser().getName(),
+                    booking.getId().toString(),
+                    car.getBrand() + " " + car.getModel() + " (" + car.getType() + ")",
+                    booking.getStartDate().format(DATE),
+                    booking.getEndDate().format(DATE),
+                    wasPaid ? money(booking.totalPrice()) : null,
+                    wasPaid ? money(fee) : null,
+                    wasPaid ? money(refundAmount) : null,
+                    refundId,
+                    cancelledByRentify);
+
+            String carsLink = frontendUrl.replaceAll("/+$", "") + "/cars";
+            emailService.sendHtmlEmail(
+                    booking.getUser().getEmail(),
+                    "Booking cancelled - " + car.getBrand() + " " + car.getModel(),
+                    EmailTemplates.bookingCancellationText(details, carsLink),
+                    EmailTemplates.bookingCancellationHtml(details, carsLink));
+            log.info("Sent cancellation email for booking {} to {}", booking.getId(), booking.getUser().getEmail());
+            return true;
+        } catch (Exception e) {
+            log.error("Could not send cancellation email for booking {}", booking.getId(), e);
+            return false;
+        }
+    }
+
     private static String money(Double amount) {
         NumberFormat nf = NumberFormat.getNumberInstance(Locale.of("en", "IN"));
         nf.setMinimumFractionDigits(2);

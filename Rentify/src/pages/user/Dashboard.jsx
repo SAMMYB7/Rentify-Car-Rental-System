@@ -7,7 +7,11 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
   FaCar, FaFileAlt, FaStar, FaUser, FaSignOutAlt, FaCreditCard, FaCheckCircle, FaFileDownload,
+  FaCalendarAlt, FaTimesCircle,
 } from "react-icons/fa";
+import EditDatesModal from "../../components/booking/EditDatesModal";
+import CancelBookingModal from "../../components/booking/CancelBookingModal";
+import PaymentCountdown from "../../components/booking/PaymentCountdown";
 
 // Reads the backend error message, including from blob responses (used by the PDF download).
 const getErrorMessage = async (err, fallback) => {
@@ -31,6 +35,8 @@ const Dashboard = () => {
   const [reviewModal, setReviewModal] = useState({ open: false, booking: null });
   const [reviewedBookings, setReviewedBookings] = useState([]);
   const [downloadingId, setDownloadingId] = useState(null);
+  const [editTarget, setEditTarget] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
 
   // Loads profile, bookings and review state. Re-used after payments/reviews to refresh in place
   // (a full page reload would wipe the toast notifications).
@@ -88,10 +94,21 @@ const Dashboard = () => {
       }
       await loadDashboard();
     } catch (err) {
-      toast.error("Payment verification failed", {
-        id: toastId,
-        description: await getErrorMessage(err, "If money was deducted, please contact support."),
-      });
+      if (err.response?.status === 409 && err.response?.data?.refunded) {
+        // Paid after the 30-minute hold expired and the car was no longer available: money refunded.
+        toast.warning("Booking expired: payment refunded", {
+          id: toastId,
+          description: err.response.data.message,
+          duration: 10000,
+        });
+      } else {
+        toast.error("Payment verification failed", {
+          id: toastId,
+          description: await getErrorMessage(err, "If money was deducted, please contact support."),
+          duration: 10000,
+        });
+      }
+      await loadDashboard();
     }
   };
 
@@ -257,10 +274,8 @@ const Dashboard = () => {
               {bookings.slice(0, 5).map((b) => {
                 const endDate = new Date(b.endDate);
                 const now = new Date();
-                const canReview =
-                  b.status === "PAID" &&
-                  endDate < now &&
-                  !reviewedBookings.includes(b.id);
+                const tripDone = (b.status === "PAID" || b.status === "COMPLETED") && endDate < now;
+                const canReview = tripDone && !reviewedBookings.includes(b.id);
 
                 return (
                   <div 
@@ -291,6 +306,11 @@ const Dashboard = () => {
                             Paid
                           </span>
                         )}
+                        {b.status === "COMPLETED" && (
+                          <span className="px-2 py-1 text-xs font-semibold bg-blue-100 text-blue-800 mr-2">
+                            Completed
+                          </span>
+                        )}
                         {b.status === "CANCELLED" && (
                           <span className="px-2 py-1 text-xs font-semibold bg-red-100 text-red-800 mr-2">
                             Cancelled
@@ -298,7 +318,18 @@ const Dashboard = () => {
                         )}
                       </div>
                     </div>
-                    
+
+                    {b.status === "CANCELLED" && b.refundAmount > 0 && (
+                      <p className="text-sm text-gray-600 mt-1">
+                        Refunded &#8377;{b.refundAmount.toLocaleString("en-IN")} to your original payment method.
+                      </p>
+                    )}
+                    {b.status === "BOOKED" && b.paymentDueAt && (
+                      <div className="mt-2">
+                        <PaymentCountdown dueAt={b.paymentDueAt} onExpire={loadDashboard} />
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap mt-4 gap-3">
                       {b.status === "BOOKED" && (
                         <button
@@ -308,7 +339,23 @@ const Dashboard = () => {
                           <FaCreditCard className="mr-2" /> Pay Now
                         </button>
                       )}
-                      {b.status === "PAID" && (
+                      {b.editable && (
+                        <button
+                          onClick={() => setEditTarget(b)}
+                          className="flex items-center border border-gray-900 text-gray-900 px-4 py-2 font-medium hover:bg-gray-100 transition-colors duration-200"
+                        >
+                          <FaCalendarAlt className="mr-2" /> Change Dates
+                        </button>
+                      )}
+                      {b.cancellable && (
+                        <button
+                          onClick={() => setCancelTarget(b)}
+                          className="flex items-center border border-red-600 text-red-600 px-4 py-2 font-medium hover:bg-red-50 transition-colors duration-200"
+                        >
+                          <FaTimesCircle className="mr-2" /> Cancel
+                        </button>
+                      )}
+                      {(b.status === "PAID" || b.status === "COMPLETED") && (
                         <button
                           onClick={() => handleDownloadInvoice(b)}
                           disabled={downloadingId === b.id}
@@ -326,7 +373,7 @@ const Dashboard = () => {
                           <FaStar className="mr-2" /> Leave Review
                         </button>
                       )}
-                      {b.status === "PAID" && reviewedBookings.includes(b.id) && (
+                      {tripDone && reviewedBookings.includes(b.id) && (
                         <div className="flex items-center text-green-600">
                           <FaCheckCircle className="mr-1" /> Reviewed
                         </div>
@@ -357,6 +404,20 @@ const Dashboard = () => {
         onSubmit={handleReviewSubmit}
         carModel={reviewModal.booking?.carModel}
       />
+      {editTarget && (
+        <EditDatesModal
+          booking={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => { setEditTarget(null); loadDashboard(); }}
+        />
+      )}
+      {cancelTarget && (
+        <CancelBookingModal
+          booking={cancelTarget}
+          onClose={() => setCancelTarget(null)}
+          onCancelled={() => { setCancelTarget(null); loadDashboard(); }}
+        />
+      )}
     </motion.div>
   );
 };

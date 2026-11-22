@@ -11,6 +11,7 @@ import com.carrental.sdp.carrental.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -44,19 +45,31 @@ public class PaymentController {
             @RequestBody Map<String, String> payload,
             @AuthenticationPrincipal User user) {
         String orderId = payload.get("razorpay_order_id");
-        boolean newlyVerified = paymentService.verifyPayment(
+        PaymentService.VerificationOutcome outcome = paymentService.verifyPayment(
                 orderId,
                 payload.get("razorpay_payment_id"),
                 payload.get("razorpay_signature"),
                 user);
 
-        // Only the first successful verification sends the invoice (retries must not spam the user).
-        boolean invoiceEmailed = newlyVerified && bookingConfirmationService.sendInvoiceEmail(orderId);
-
-        return ResponseEntity.ok(Map.of(
-                "message", newlyVerified ? "Payment verified successfully." : "Payment was already verified.",
-                "alreadyVerified", !newlyVerified,
-                "invoiceEmailed", invoiceEmailed));
+        return switch (outcome) {
+            case VERIFIED -> ResponseEntity.ok(Map.of(
+                    "message", "Payment verified successfully.",
+                    "alreadyVerified", false,
+                    // Only the first successful verification sends the invoice (retries must not spam the user).
+                    "invoiceEmailed", bookingConfirmationService.sendInvoiceEmail(orderId)));
+            case ALREADY_VERIFIED -> ResponseEntity.ok(Map.of(
+                    "message", "Payment was already verified.",
+                    "alreadyVerified", true,
+                    "invoiceEmailed", false));
+            case BOOKING_UNAVAILABLE_REFUNDED -> ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "message", "Your booking expired before the payment completed, so the full amount has been "
+                            + "refunded to your original payment method. Please book again.",
+                    "refunded", true));
+            case BOOKING_UNAVAILABLE_REFUND_FAILED -> ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "message", "Your booking expired before the payment completed and the automatic refund "
+                            + "failed. Please contact support with your payment ID so we can refund you.",
+                    "refunded", false));
+        };
     }
 
     // Download the PDF invoice of a paid booking (booking owner or admin)

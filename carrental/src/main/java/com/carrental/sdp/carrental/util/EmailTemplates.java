@@ -115,6 +115,90 @@ public final class EmailTemplates {
                 d.days(), d.amountPaid(), d.paymentId(), d.bookingId(), dashboardLink);
     }
 
+    // ------------------------------------------------------------------ booking cancellation
+
+    /** Details shown in the booking cancellation email. Money fields are null for unpaid bookings. */
+    public record CancellationDetails(
+            String customerName,
+            String bookingId,
+            String car,
+            String fromDate,
+            String toDate,
+            String amountPaid,
+            String cancellationFee,
+            String refundAmount,
+            String refundId,
+            boolean cancelledByRentify) {
+    }
+
+    public static String bookingCancellationHtml(CancellationDetails d, String carsLink) {
+        boolean paid = d.amountPaid() != null;
+        Map<String, String> rows = new LinkedHashMap<>();
+        rows.put("Booking ID", d.bookingId());
+        rows.put("Car", d.car());
+        rows.put("Pick-up", d.fromDate());
+        rows.put("Return", d.toDate());
+        if (paid) {
+            rows.put("Amount Paid", d.amountPaid());
+            rows.put("Cancellation Fee", d.cancellationFee());
+            if (d.refundId() != null) {
+                rows.put("Refund Reference", d.refundId());
+            }
+        }
+
+        String intro = d.cancelledByRentify()
+                ? "We're sorry, but Rentify had to cancel your booking. "
+                : "Your booking has been cancelled as requested. ";
+        String refundText = !paid
+                ? "No payment had been made, so there is nothing to refund."
+                : d.refundId() != null
+                    ? "Your refund has been initiated to your original payment method. Refunds usually reach your "
+                            + "account within 5-7 working days."
+                    : "As the booking was cancelled within 48 hours of pick-up, the cancellation fee covers the full "
+                            + "amount, so no refund applies.";
+
+        String body = heading("Booking cancelled")
+                + paragraph("Hi " + esc(nameOrThere(d.customerName())) + ",")
+                + paragraph(esc(intro + refundText))
+                + (paid ? detailsTable(rows, "Refund Amount", d.refundAmount()) : detailsTable(rows, "Status", "Cancelled"))
+                + button("Browse Cars", carsLink)
+                + divider("Cancellation policy: full refund if cancelled more than 48 hours before pick-up; within "
+                        + "48 hours, one day's rental is kept as a cancellation fee.");
+        return layout("Your Rentify booking was cancelled",
+                "Booking cancelled: " + d.car() + ", " + d.fromDate() + " to " + d.toDate() + ".", body);
+    }
+
+    public static String bookingCancellationText(CancellationDetails d, String carsLink) {
+        boolean paid = d.amountPaid() != null;
+        String money = paid
+                ? """
+                  Amount Paid      : %s
+                  Cancellation Fee : %s
+                  Refund Amount    : %s
+                  Refund Reference : %s
+                  Refunds usually reach your account within 5-7 working days.
+                  """.formatted(d.amountPaid(), d.cancellationFee(), d.refundAmount(),
+                        d.refundId() != null ? d.refundId() : "-")
+                : "No payment had been made, so there is nothing to refund.\n";
+        return """
+            Hi %s,
+
+            %s
+
+            Booking ID : %s
+            Car        : %s
+            Pick-up    : %s
+            Return     : %s
+            %s
+            Browse cars: %s
+
+            - The Rentify Team
+            """.formatted(nameOrThere(d.customerName()),
+                d.cancelledByRentify() ? "We're sorry, but Rentify had to cancel your booking."
+                        : "Your booking has been cancelled as requested.",
+                d.bookingId(), d.car(), d.fromDate(), d.toDate(), money, carsLink);
+    }
+
     // ------------------------------------------------------------------ shared layout
 
     private static String layout(String title, String preheader, String contentRows) {

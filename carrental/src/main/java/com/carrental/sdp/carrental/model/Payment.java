@@ -38,10 +38,16 @@ public class Payment {
     private Double amount;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.VARCHAR) // plain VARCHAR, not a MySQL ENUM, so new statuses need no ALTER
+    @Column(nullable = false, length = 20)
     private PaymentStatus status;
 
     private LocalDateTime paymentTime;
+
+    /** Refund details, set when a paid booking is cancelled. */
+    private Double refundAmount;
+    private String razorpayRefundId;
+    private LocalDateTime refundedAt;
 
     /** When the order was created. Used for "latest first" ordering, since UUIDs are random. */
     @Column(nullable = false, updatable = false)

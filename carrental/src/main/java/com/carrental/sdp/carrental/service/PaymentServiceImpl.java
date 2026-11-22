@@ -14,6 +14,8 @@ import com.carrental.sdp.carrental.repository.PaymentRepository;
 import com.razorpay.Order;
 import com.razorpay.RazorpayClient;
 import com.razorpay.RazorpayException;
+import com.razorpay.Refund;
+import lombok.extern.slf4j.Slf4j;
 import com.razorpay.Utils;
 import lombok.RequiredArgsConstructor;
 import org.json.JSONObject;
@@ -28,6 +30,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PaymentServiceImpl implements PaymentService {
@@ -59,6 +62,10 @@ public class PaymentServiceImpl implements PaymentService {
         if (booking.getStatus() != BookingStatus.BOOKED) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "This booking cannot be paid (status: " + booking.getStatus() + ").");
+        }
+        if (booking.getPaymentDueAt() != null && LocalDateTime.now().isAfter(booking.getPaymentDueAt())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The time to pay for this booking has run out. Please book the car again.");
         }
 
         List<Payment> existing = paymentRepository.findByBookingAndStatusIn(
@@ -113,7 +120,8 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
-    public boolean verifyPayment(String razorpayOrderId, String razorpayPaymentId, String razorpaySignature, User user) {
+    public VerificationOutcome verifyPayment(String razorpayOrderId, String razorpayPaymentId,
+                                             String razorpaySignature, User user) {
         if (isBlank(razorpayOrderId) || isBlank(razorpayPaymentId) || isBlank(razorpaySignature)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing payment verification fields.");
         }
@@ -126,8 +134,10 @@ public class PaymentServiceImpl implements PaymentService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not own this payment.");
         }
 
-        if (payment.getStatus() == PaymentStatus.SUCCESS) {
-            return false; // already verified; make retries harmless (and do not re-send the invoice)
+        if (payment.getStatus() == PaymentStatus.SUCCESS
+                || payment.getStatus() == PaymentStatus.REFUNDED
+                || payment.getStatus() == PaymentStatus.PARTIALLY_REFUNDED) {
+            return VerificationOutcome.ALREADY_VERIFIED; // harmless retry; do not re-send the invoice
         }
 
         JSONObject attributes = new JSONObject();
@@ -146,13 +156,82 @@ public class PaymentServiceImpl implements PaymentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Payment signature verification failed.");
         }
 
-        payment.setStatus(PaymentStatus.SUCCESS);
         payment.setRazorpayPaymentId(razorpayPaymentId);
         payment.setPaymentTime(LocalDateTime.now());
+
+        if (booking.getStatus() != BookingStatus.BOOKED) {
+            // The money was taken, but the booking was released (30-minute hold expired) or cancelled
+            // while the user was in checkout. Never keep money for a booking they don't have: refund it.
+            try {
+                String refundId = razorpayRefund(razorpayPaymentId, payment.getAmount(),
+                        "Booking no longer available when payment completed");
+                payment.setStatus(PaymentStatus.REFUNDED);
+                payment.setRefundAmount(payment.getAmount());
+                payment.setRazorpayRefundId(refundId);
+                payment.setRefundedAt(LocalDateTime.now());
+                paymentRepository.save(payment);
+                return VerificationOutcome.BOOKING_UNAVAILABLE_REFUNDED;
+            } catch (RazorpayException e) {
+                log.error("Automatic refund failed for payment {} (booking {})", razorpayPaymentId, booking.getId(), e);
+                payment.setStatus(PaymentStatus.SUCCESS); // money is held; support must refund it manually
+                paymentRepository.save(payment);
+                return VerificationOutcome.BOOKING_UNAVAILABLE_REFUND_FAILED;
+            }
+        }
+
+        payment.setStatus(PaymentStatus.SUCCESS);
         booking.setStatus(BookingStatus.PAID);
+        booking.setPaymentDueAt(null);
         paymentRepository.save(payment);
         bookingRepository.save(booking);
-        return true;
+        return VerificationOutcome.VERIFIED;
+    }
+
+    @Override
+    @Transactional
+    public RefundResult refundForCancellation(Booking booking, double amount) {
+        Payment payment = paymentRepository.findByBookingOrderByCreatedAtDesc(booking).stream()
+                .filter(p -> p.getStatus() == PaymentStatus.SUCCESS)
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "No successful payment was found for this booking, so nothing can be refunded."));
+
+        double refund = Math.min(Math.max(amount, 0), payment.getAmount());
+        String refundId = null;
+        if (refund > 0) {
+            if (payment.getRazorpayPaymentId() == null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "This payment has no Razorpay payment reference, so it must be refunded manually.");
+            }
+            try {
+                refundId = razorpayRefund(payment.getRazorpayPaymentId(), refund, "Booking cancelled by customer");
+            } catch (RazorpayException e) {
+                log.error("Refund failed for payment {} (booking {})", payment.getRazorpayPaymentId(), booking.getId(), e);
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "The refund could not be processed right now, so the booking was not cancelled. "
+                                + "Please try again in a few minutes.", e);
+            }
+        }
+
+        boolean full = Math.round(refund * 100) == Math.round(payment.getAmount() * 100);
+        payment.setStatus(full ? PaymentStatus.REFUNDED : PaymentStatus.PARTIALLY_REFUNDED);
+        payment.setRefundAmount(refund);
+        payment.setRazorpayRefundId(refundId);
+        payment.setRefundedAt(LocalDateTime.now());
+        paymentRepository.save(payment);
+        return new RefundResult(refundId, refund);
+    }
+
+    /** Issues a (partial) refund through Razorpay and returns the refund id. */
+    private String razorpayRefund(String razorpayPaymentId, double amount, String reason) throws RazorpayException {
+        JSONObject request = new JSONObject();
+        request.put("amount", Math.round(amount * 100)); // paise
+        request.put("speed", "normal");
+        JSONObject notes = new JSONObject();
+        notes.put("reason", reason);
+        request.put("notes", notes);
+        Refund refund = razorpayClient.payments.refund(razorpayPaymentId, request);
+        return refund.get("id");
     }
 
     @Override

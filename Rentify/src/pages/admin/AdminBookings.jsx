@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import api from "../../api/axios";
 import { motion } from "framer-motion";
 import { FaFileAlt, FaTrash, FaCalendarAlt, FaUserCircle, FaCarSide } from "react-icons/fa";
+import { toast } from "sonner";
 
 const AdminBookings = () => {
   const [bookings, setBookings] = useState([]);
@@ -40,20 +41,34 @@ const AdminBookings = () => {
     fetchBookings();
   }, []);
 
-  const handleCancel = async (id) => {
-    if (!window.confirm("Are you sure you want to cancel this booking?")) return;
+  const handleCancel = async (booking) => {
+    const wasPaid = booking.status === "PAID";
+    const question = wasPaid
+      ? `Cancel this paid booking? The customer will get a FULL refund of ₹${booking.totalPrice?.toLocaleString("en-IN")} and a cancellation email.`
+      : "Cancel this unpaid booking? The customer will get a cancellation email.";
+    if (!window.confirm(question)) return;
+
+    const toastId = toast.loading(wasPaid ? "Cancelling and refunding..." : "Cancelling booking...");
     try {
-      await api.delete(`/bookings/${id}`);
-      setBookings(bookings => bookings.map(b => b.id === id ? { ...b, status: "CANCELLED" } : b));
-      
+      const { data } = await api.delete(`/bookings/${booking.id}`);
+      setBookings(list => list.map(b =>
+        b.id === booking.id ? { ...b, status: "CANCELLED", cancellable: false, refundAmount: data.refundAmount } : b));
+
       // Update stats after cancellation
       setStats(prev => ({
         ...prev,
-        active: prev.active - 1,
+        active: wasPaid ? prev.active : prev.active - 1,
+        paid: wasPaid ? prev.paid - 1 : prev.paid,
         cancelled: prev.cancelled + 1
       }));
+      toast.success("Booking cancelled", {
+        id: toastId,
+        description: data.refundAmount > 0
+          ? `Refunded ₹${data.refundAmount.toLocaleString("en-IN")} (ref ${data.refundId}).`
+          : "No payment to refund.",
+      });
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to cancel booking.");
+      toast.error("Failed to cancel booking", { id: toastId, description: err.response?.data?.message || "Please try again." });
     }
   };
 
@@ -189,20 +204,27 @@ const AdminBookings = () => {
                       <span className={`px-3 py-1 inline-flex text-xs font-medium rounded-full ${
                         booking.status === 'PAID' ? 'bg-green-100 text-green-800' :
                         booking.status === 'BOOKED' ? 'bg-yellow-100 text-yellow-800' :
+                        booking.status === 'COMPLETED' ? 'bg-blue-100 text-blue-800' :
                         'bg-red-100 text-red-800'
                       }`}>
                         {booking.status === 'PAID' ? 'Paid' :
-                         booking.status === 'BOOKED' ? 'Pending' : 
+                         booking.status === 'BOOKED' ? 'Pending' :
+                         booking.status === 'COMPLETED' ? 'Completed' :
                          'Cancelled'}
                       </span>
+                      {booking.status === 'CANCELLED' && booking.refundAmount > 0 && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          Refunded &#8377;{booking.refundAmount.toLocaleString("en-IN")}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {booking.createdAt ? formatDate(booking.createdAt) : "N/A"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      {booking.status !== "CANCELLED" && (
-                        <button 
-                          onClick={() => handleCancel(booking.id)}
+                      {booking.cancellable && (
+                        <button
+                          onClick={() => handleCancel(booking)}
                           className="inline-flex items-center text-red-600 hover:text-red-900"
                         >
                           <FaTrash className="mr-1" /> Cancel

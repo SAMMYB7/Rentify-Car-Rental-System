@@ -8,6 +8,8 @@ import com.carrental.sdp.carrental.model.Car;
 import com.carrental.sdp.carrental.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
 
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
@@ -29,4 +31,10 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     );
 
     boolean existsByUser(User user);
+
+    /** Unpaid bookings whose payment deadline has passed (released by the maintenance job). */
+    List<Booking> findByStatusAndPaymentDueAtBefore(BookingStatus status, LocalDateTime moment);
+
+    /** Paid bookings whose trip has ended (marked COMPLETED by the maintenance job). */
+    List<Booking> findByStatusAndEndDateBefore(BookingStatus status, LocalDate date);
 }

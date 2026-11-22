@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import com.carrental.sdp.carrental.dto.BookingRequestDto;
 import com.carrental.sdp.carrental.dto.BookingResponseDto;
+import com.carrental.sdp.carrental.dto.CancellationResultDto;
 import com.carrental.sdp.carrental.model.User;
 import com.carrental.sdp.carrental.service.BookingService;
 import jakarta.validation.Valid;
@@ -47,17 +48,14 @@ public class BookingController {
         return ResponseEntity.ok(response);
     }
 
-    // Cancel a booking
+    // Cancel a booking (paid bookings are refunded per the cancellation policy)
     @DeleteMapping("/{id}")
-    
-    public ResponseEntity<Void> cancelBooking(
+    public ResponseEntity<CancellationResultDto> cancelBooking(
             @PathVariable UUID id,
             Authentication authentication
     ) {
         User user = (User) authentication.getPrincipal();
-        UUID userId = user.getId();
-        bookingService.cancelBooking(id, userId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(bookingService.cancelBooking(id, user.getId()));
     }
 
     // Get all bookings for the logged-in user
