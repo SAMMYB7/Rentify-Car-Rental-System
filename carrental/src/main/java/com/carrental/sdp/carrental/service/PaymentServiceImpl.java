@@ -113,7 +113,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
-    public void verifyPayment(String razorpayOrderId, String razorpayPaymentId, String razorpaySignature, User user) {
+    public boolean verifyPayment(String razorpayOrderId, String razorpayPaymentId, String razorpaySignature, User user) {
         if (isBlank(razorpayOrderId) || isBlank(razorpayPaymentId) || isBlank(razorpaySignature)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing payment verification fields.");
         }
@@ -127,7 +127,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         if (payment.getStatus() == PaymentStatus.SUCCESS) {
-            return; // already verified; make retries harmless
+            return false; // already verified; make retries harmless (and do not re-send the invoice)
         }
 
         JSONObject attributes = new JSONObject();
@@ -147,10 +147,12 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         payment.setStatus(PaymentStatus.SUCCESS);
+        payment.setRazorpayPaymentId(razorpayPaymentId);
         payment.setPaymentTime(LocalDateTime.now());
         booking.setStatus(BookingStatus.PAID);
         paymentRepository.save(payment);
         bookingRepository.save(booking);
+        return true;
     }
 
     @Override

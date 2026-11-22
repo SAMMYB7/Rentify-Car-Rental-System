@@ -20,6 +20,7 @@
 		<jjwt.version>0.13.0</jjwt.version>
 		<cloudinary.version>2.6.0</cloudinary.version>
 		<razorpay.version>1.4.10</razorpay.version>
+		<openpdf.version>3.0.5</openpdf.version>
 	</properties>
 
 	<dependencies>
@@ -101,6 +102,13 @@
 			<groupId>com.razorpay</groupId>
 			<artifactId>razorpay-java</artifactId>
 			<version>${razorpay.version}</version>
+		</dependency>
+
+		<!-- PDF invoices -->
+		<dependency>
+			<groupId>com.github.librepdf</groupId>
+			<artifactId>openpdf</artifactId>
+			<version>${openpdf.version}</version>
 		</dependency>
 
 		<!-- Tests -->

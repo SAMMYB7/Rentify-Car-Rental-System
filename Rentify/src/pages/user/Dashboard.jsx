@@ -1,10 +1,27 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import api from "../../api/axios";
 import { useAuth } from "../../context/AuthContext";
 import { Link } from "react-router-dom";
 import ReviewModal from "../../components/ReviewModal";
 import { motion } from "framer-motion";
-import { FaCar, FaFileAlt, FaStar, FaUser, FaSignOutAlt, FaCreditCard, FaCheckCircle } from "react-icons/fa";
+import { toast } from "sonner";
+import {
+  FaCar, FaFileAlt, FaStar, FaUser, FaSignOutAlt, FaCreditCard, FaCheckCircle, FaFileDownload,
+} from "react-icons/fa";
+
+// Reads the backend error message, including from blob responses (used by the PDF download).
+const getErrorMessage = async (err, fallback) => {
+  const data = err.response?.data;
+  if (data instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await data.text());
+      return parsed.message || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return data?.message || (typeof data === "string" && data) || err.message || fallback;
+};
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -13,90 +30,125 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [reviewModal, setReviewModal] = useState({ open: false, booking: null });
   const [reviewedBookings, setReviewedBookings] = useState([]);
+  const [downloadingId, setDownloadingId] = useState(null);
 
-  useEffect(() => {
-    const fetchProfileAndBookings = async () => {
-      try {
-        const [profileRes, bookingsRes] = await Promise.all([
-          api.get("/users/me"),
-          api.get("/users/bookings"),
-        ]);
-        setProfile(profileRes.data);
-        setBookings(bookingsRes.data);
+  // Loads profile, bookings and review state. Re-used after payments/reviews to refresh in place
+  // (a full page reload would wipe the toast notifications).
+  const loadDashboard = useCallback(async () => {
+    try {
+      const [profileRes, bookingsRes] = await Promise.all([
+        api.get("/users/me"),
+        api.get("/users/bookings"),
+      ]);
+      setProfile(profileRes.data);
+      setBookings(bookingsRes.data);
 
-        // Fetch reviews for all bookings' cars by this user
-        const carIds = bookingsRes.data.map(b => b.carId);
-        const reviews = await Promise.all(
-          carIds.map(carId => api.get(`/reviews?carId=${carId}`))
-        );
-        // Find which bookings have already been reviewed by this user
-        const reviewed = [];
-        reviews.forEach((res, idx) => {
-          const booking = bookingsRes.data[idx];
-          if (res.data.some(r => r.username === profileRes.data.name)) {
-            reviewed.push(booking.id);
-          }
-        });
-        setReviewedBookings(reviewed);
-      } catch (err) {
-        console.error("Error fetching data:", err);
-        // Only logout if it's an auth error
-        if (err.response?.status === 401) {
-          logout();
+      // Find which bookings' cars this user has already reviewed
+      const reviews = await Promise.all(
+        bookingsRes.data.map((b) => api.get("/reviews", { params: { carId: b.carId } }))
+      );
+      const reviewed = [];
+      reviews.forEach((res, idx) => {
+        if (res.data.some((r) => r.username === profileRes.data.name)) {
+          reviewed.push(bookingsRes.data[idx].id);
         }
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProfileAndBookings();
+      });
+      setReviewedBookings(reviewed);
+    } catch (err) {
+      console.error("Error fetching data:", err);
+      if (err.response?.status === 401) logout();
+    } finally {
+      setLoading(false);
+    }
   }, [logout]);
 
-  const handlePayNow = async (bookingId) => {
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  const verifyPayment = async (response) => {
+    const toastId = toast.loading("Verifying your payment...");
     try {
-      // 1. Create Razorpay order via backend
+      const res = await api.post("/payments/verify", {
+        razorpay_order_id: response.razorpay_order_id,
+        razorpay_payment_id: response.razorpay_payment_id,
+        razorpay_signature: response.razorpay_signature,
+      });
+      const { invoiceEmailed, alreadyVerified } = res.data;
+
+      toast.success("Payment successful! Your booking is confirmed.", { id: toastId });
+      if (invoiceEmailed) {
+        toast.success("Invoice sent to your email", {
+          description: `We've emailed your PDF invoice to ${profile?.email || "your inbox"}.`,
+        });
+      } else if (!alreadyVerified) {
+        toast.warning("We couldn't email your invoice", {
+          description: "Your booking is confirmed. Download the invoice from your dashboard.",
+        });
+      }
+      await loadDashboard();
+    } catch (err) {
+      toast.error("Payment verification failed", {
+        id: toastId,
+        description: await getErrorMessage(err, "If money was deducted, please contact support."),
+      });
+    }
+  };
+
+  const handlePayNow = async (bookingId) => {
+    if (!window.Razorpay) {
+      toast.error("Payment service failed to load", {
+        description: "Check your connection and refresh the page.",
+      });
+      return;
+    }
+    try {
+      // 1. Create (or reuse) the Razorpay order via the backend
       const res = await api.post("/payments/create", { bookingId });
       const { orderId, currency, key } = res.data;
 
       // 2. Open Razorpay checkout. The amount comes from the order itself, so it is not passed
       //    here (a float like 1999.99 * 100 can produce a non-integer and make checkout reject it).
-      const options = {
+      const rzp = new window.Razorpay({
         key,
         currency,
         name: "Rentify Car Rental",
         description: "Car Booking Payment",
         order_id: orderId,
-        handler: async function (response) {
-          // 3. On payment success, verify payment
-          try {
-            await api.post("/payments/verify", {
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-            });
-            alert("Payment successful!");
-            window.location.reload();
-          } catch (err) {
-            alert("Payment verification failed!");
-          }
+        handler: verifyPayment, // 3. verify, confirm booking, email invoice
+        prefill: { name: profile?.name, email: profile?.email },
+        theme: { color: "#111827" },
+        modal: {
+          ondismiss: () => toast.info("Payment cancelled. You can pay any time from your dashboard."),
         },
-        prefill: {
-          name: profile?.name,
-          email: profile?.email,
-        },
-        theme: { color: "#333333" },
-      };
-      if (!window.Razorpay) {
-        alert("Payment service failed to load. Check your connection and refresh the page.");
-        return;
-      }
-      const rzp = new window.Razorpay(options);
+      });
       rzp.on("payment.failed", (response) => {
         console.error("Razorpay payment failed:", response.error);
-        alert("Payment failed: " + (response.error?.description || "Unknown error"));
+        toast.error("Payment failed", { description: response.error?.description || "Please try again." });
       });
       rzp.open();
     } catch (err) {
-      alert("Could not initiate payment: " + (err.response?.data?.message || err.message));
+      toast.error("Could not start payment", { description: await getErrorMessage(err, "Please try again.") });
+    }
+  };
+
+  const handleDownloadInvoice = async (booking) => {
+    setDownloadingId(booking.id);
+    try {
+      const res = await api.get(`/payments/booking/${booking.id}/invoice`, { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Rentify-Invoice-${String(booking.id).slice(0, 8)}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Invoice downloaded");
+    } catch (err) {
+      toast.error("Could not download invoice", { description: await getErrorMessage(err, "Please try again.") });
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -107,12 +159,11 @@ const Dashboard = () => {
         rating,
         comment,
       });
-      alert("Review submitted!");
+      toast.success("Thanks! Your review has been submitted.");
       setReviewModal({ open: false, booking: null });
-      // Optionally, refresh bookings/reviews
-      window.location.reload();
+      await loadDashboard();
     } catch (err) {
-      alert("Failed to submit review: " + (err.response?.data?.message || err.message));
+      toast.error("Failed to submit review", { description: await getErrorMessage(err, "Please try again.") });
     }
   };
 
@@ -255,6 +306,16 @@ const Dashboard = () => {
                           className="flex items-center bg-gray-900 text-white px-4 py-2 font-medium hover:bg-gray-800 transition-colors duration-200"
                         >
                           <FaCreditCard className="mr-2" /> Pay Now
+                        </button>
+                      )}
+                      {b.status === "PAID" && (
+                        <button
+                          onClick={() => handleDownloadInvoice(b)}
+                          disabled={downloadingId === b.id}
+                          className="flex items-center border border-gray-900 text-gray-900 px-4 py-2 font-medium hover:bg-gray-100 transition-colors duration-200 disabled:opacity-60"
+                        >
+                          <FaFileDownload className="mr-2" />
+                          {downloadingId === b.id ? "Preparing..." : "Download Invoice"}
                         </button>
                       )}
                       {canReview && (

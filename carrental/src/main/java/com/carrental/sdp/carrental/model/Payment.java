@@ -31,6 +31,9 @@ public class Payment {
     @Column(nullable = false)
     private String razorpayOrderId;
 
+    /** Razorpay payment reference, set once the payment is verified (shown on the invoice). */
+    private String razorpayPaymentId;
+
     @Column(nullable = false)
     private Double amount;
 
