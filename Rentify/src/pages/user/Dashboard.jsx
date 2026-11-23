@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import api from "../../api/axios";
+import { getBlobErrorMessage, getErrorMessage } from "../../api/errors";
 import { useAuth } from "../../context/AuthContext";
 import { Link } from "react-router-dom";
 import ReviewModal from "../../components/ReviewModal";
@@ -12,20 +13,6 @@ import {
 import EditDatesModal from "../../components/booking/EditDatesModal";
 import CancelBookingModal from "../../components/booking/CancelBookingModal";
 import PaymentCountdown from "../../components/booking/PaymentCountdown";
-
-// Reads the backend error message, including from blob responses (used by the PDF download).
-const getErrorMessage = async (err, fallback) => {
-  const data = err.response?.data;
-  if (data instanceof Blob) {
-    try {
-      const parsed = JSON.parse(await data.text());
-      return parsed.message || fallback;
-    } catch {
-      return fallback;
-    }
-  }
-  return data?.message || (typeof data === "string" && data) || err.message || fallback;
-};
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -61,8 +48,11 @@ const Dashboard = () => {
       });
       setReviewedBookings(reviewed);
     } catch (err) {
-      console.error("Error fetching data:", err);
-      if (err.response?.status === 401) logout();
+      if (err.response?.status === 401) {
+        logout();
+      } else {
+        toast.error("Couldn't load your dashboard", { description: getErrorMessage(err, "Please refresh the page.") });
+      }
     } finally {
       setLoading(false);
     }
@@ -104,7 +94,7 @@ const Dashboard = () => {
       } else {
         toast.error("Payment verification failed", {
           id: toastId,
-          description: await getErrorMessage(err, "If money was deducted, please contact support."),
+          description: await getBlobErrorMessage(err, "If money was deducted, please contact support."),
           duration: 10000,
         });
       }
@@ -145,7 +135,7 @@ const Dashboard = () => {
       });
       rzp.open();
     } catch (err) {
-      toast.error("Could not start payment", { description: await getErrorMessage(err, "Please try again.") });
+      toast.error("Could not start payment", { description: await getBlobErrorMessage(err, "Please try again.") });
     }
   };
 
@@ -163,7 +153,7 @@ const Dashboard = () => {
       URL.revokeObjectURL(url);
       toast.success("Invoice downloaded");
     } catch (err) {
-      toast.error("Could not download invoice", { description: await getErrorMessage(err, "Please try again.") });
+      toast.error("Could not download invoice", { description: await getBlobErrorMessage(err, "Please try again.") });
     } finally {
       setDownloadingId(null);
     }
@@ -180,7 +170,7 @@ const Dashboard = () => {
       setReviewModal({ open: false, booking: null });
       await loadDashboard();
     } catch (err) {
-      toast.error("Failed to submit review", { description: await getErrorMessage(err, "Please try again.") });
+      toast.error("Failed to submit review", { description: await getBlobErrorMessage(err, "Please try again.") });
     }
   };
 

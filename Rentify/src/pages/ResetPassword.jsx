@@ -4,13 +4,9 @@ import { motion } from "framer-motion";
 import { FaLock } from "react-icons/fa";
 import { toast } from "sonner";
 import api from "../api/axios";
+import { getErrorMessage } from "../api/errors";
 
 const MIN_PASSWORD_LENGTH = 6; // keep in sync with ResetPasswordRequestDTO
-
-const getErrorMessage = (err, fallback) =>
-  err.response?.data?.message ||
-  (typeof err.response?.data === "string" && err.response.data) ||
-  fallback;
 
 const inputClass =
   "appearance-none rounded-none relative block w-full px-10 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-gray-900 focus:border-gray-900 focus:z-10 sm:text-sm";

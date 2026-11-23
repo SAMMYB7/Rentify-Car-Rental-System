@@ -1,6 +1,7 @@
 package com.carrental.sdp.carrental.service;
 
 import com.carrental.sdp.carrental.dto.*;
+import com.carrental.sdp.carrental.exception.ApiException;
 import com.carrental.sdp.carrental.model.*;
 import com.carrental.sdp.carrental.repository.UserRepository;
 import com.carrental.sdp.carrental.util.JwtUtil;
@@ -11,6 +12,8 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
+
+    private static final String INVALID_LOGIN = "Incorrect email or password.";
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -36,11 +39,17 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("Invalid credentials"));
+        if (request.getEmail() == null || request.getEmail().isBlank()
+                || request.getPassword() == null || request.getPassword().isEmpty()) {
+            throw ApiException.badRequest("Please enter your email and password.");
+        }
+        // Same message for "no such email" and "wrong password", so the login form can't be used
+        // to find out which emails are registered.
+        User user = userRepository.findByEmail(request.getEmail().trim())
+                .orElseThrow(() -> ApiException.unauthorized(INVALID_LOGIN));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new RuntimeException("Invalid credentials");
+            throw ApiException.unauthorized(INVALID_LOGIN);
         }
 
         String token = jwtUtil.generateToken(user);

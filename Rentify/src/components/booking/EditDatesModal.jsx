@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import api from "../../api/axios";
+import { getErrorMessage } from "../../api/errors";
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -15,11 +16,6 @@ const rentalDays = (start, end) => {
   const diff = Math.round((new Date(end) - new Date(start)) / MS_PER_DAY);
   return diff >= 0 ? diff + 1 : 0;
 };
-
-const getErrorMessage = (err, fallback) =>
-  err.response?.data?.message ||
-  (typeof err.response?.data === "string" && err.response.data) ||
-  fallback;
 
 /** Lets the renter change the dates of an UNPAID booking (paid ones must be cancelled and rebooked). */
 const EditDatesModal = ({ booking, onClose, onSaved }) => {

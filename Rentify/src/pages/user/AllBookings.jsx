@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import api from "../../api/axios";
+import { toast } from "sonner";
+import { getErrorMessage } from "../../api/errors";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -32,7 +34,7 @@ const AllBookings = () => {
       const res = await api.get("/users/bookings");
       setBookings(res.data);
     } catch (err) {
-      console.error("Error fetching bookings:", err);
+      toast.error("Couldn't load your bookings", { description: getErrorMessage(err, "Please refresh the page.") });
     } finally {
       setLoading(false);
     }

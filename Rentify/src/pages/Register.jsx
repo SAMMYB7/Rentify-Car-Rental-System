@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import api from "../api/axios";
+import { getErrorMessage } from "../api/errors";
 import { motion } from "framer-motion";
 import { FaUser, FaEnvelope, FaLock } from "react-icons/fa";
 import { toast } from "sonner";
@@ -27,7 +28,7 @@ const Register = () => {
       toast.success("Account created successfully! Redirecting to login...");
       setTimeout(() => navigate("/login"), 1500);
     } catch (err) {
-      const errorMessage = err.response?.data?.message || "Registration failed";
+      const errorMessage = getErrorMessage(err, "Registration failed. Please try again.");
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {

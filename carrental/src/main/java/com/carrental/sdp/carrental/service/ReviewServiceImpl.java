@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import com.carrental.sdp.carrental.dto.ReviewRequestDTO;
 import com.carrental.sdp.carrental.dto.ReviewResponseDTO;
+import com.carrental.sdp.carrental.exception.ApiException;
 import com.carrental.sdp.carrental.model.Car;
 import com.carrental.sdp.carrental.model.Review;
 import com.carrental.sdp.carrental.model.User;
@@ -27,9 +28,9 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     public ReviewResponseDTO addReview(ReviewRequestDTO dto, String username) {
         User user = userRepository.findByEmail(username)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> ApiException.notFound("User not found."));
         Car car = carRepository.findById(dto.getCarId())
-                .orElseThrow(() -> new RuntimeException("Car not found"));
+                .orElseThrow(() -> ApiException.notFound("Car not found."));
 
         Review review = Review.builder()
                 .car(car)

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../../api/axios";
+import { toast } from "sonner";
+import { getErrorMessage } from "../../api/errors";
 import { useAuth } from "../../context/AuthContext";
 import { motion } from "framer-motion";
 import { 
@@ -93,7 +95,7 @@ const AdminDashboard = () => {
         prepareChartData(users, cars, bookings, payments);
         
       } catch (err) {
-        console.error("Error fetching dashboard data:", err);
+        toast.error("Couldn't load dashboard data", { description: getErrorMessage(err, "Please refresh the page.") });
       } finally {
         setLoading(false);
       }

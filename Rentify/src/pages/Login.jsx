@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link, Navigate } from "react-router-dom";
 import api from "../api/axios";
+import { getErrorMessage } from "../api/errors";
 import { useAuth } from "../context/AuthContext";
 import { jwtDecode } from "jwt-decode";
 import { motion } from "framer-motion";
@@ -39,7 +40,7 @@ const Login = () => {
         navigate("/dashboard");
       }
     } catch (err) {
-      const errorMessage = err.response?.data?.message || "Login failed";
+      const errorMessage = getErrorMessage(err, "Login failed. Please try again.");
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {

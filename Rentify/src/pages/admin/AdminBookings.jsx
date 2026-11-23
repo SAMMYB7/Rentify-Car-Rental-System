@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../../api/axios";
+import { getErrorMessage } from "../../api/errors";
 import { motion } from "framer-motion";
 import { FaFileAlt, FaTrash, FaCalendarAlt, FaUserCircle, FaCarSide } from "react-icons/fa";
 import { toast } from "sonner";
@@ -34,6 +35,7 @@ const AdminBookings = () => {
         });
       } catch (err) {
         setBookings([]);
+        toast.error("Couldn't load bookings", { description: getErrorMessage(err, "Please refresh the page.") });
       } finally {
         setLoading(false);
       }
@@ -68,7 +70,7 @@ const AdminBookings = () => {
           : "No payment to refund.",
       });
     } catch (err) {
-      toast.error("Failed to cancel booking", { id: toastId, description: err.response?.data?.message || "Please try again." });
+      toast.error("Failed to cancel booking", { id: toastId, description: getErrorMessage(err, "Please try again.") });
     }
   };
 

@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react";
 import api from "../../api/axios";
+import { toast } from "sonner";
+import { getErrorMessage } from "../../api/errors";
 import { motion } from "framer-motion";
 import { FaUser, FaEnvelope, FaIdCard, FaEdit } from "react-icons/fa";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-
-const getErrorMessage = (err, fallback) =>
-  err.response?.data?.message ||
-  (typeof err.response?.data === "string" && err.response.data) ||
-  fallback;
-
+
 const Profile = () => {
   const { login } = useAuth();
   const [profile, setProfile] = useState(null);
@@ -32,7 +29,7 @@ const Profile = () => {
           email: res.data.email || ""
         });
       } catch (err) {
-        console.error("Failed to fetch profile:", err);
+        toast.error("Couldn't load your profile", { description: getErrorMessage(err, "Please refresh the page.") });
       } finally {
         setLoading(false);
       }

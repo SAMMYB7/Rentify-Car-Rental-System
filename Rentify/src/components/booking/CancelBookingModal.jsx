@@ -1,13 +1,9 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import api from "../../api/axios";
+import { getErrorMessage } from "../../api/errors";
 
 const rupees = (value) => `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-const getErrorMessage = (err, fallback) =>
-  err.response?.data?.message ||
-  (typeof err.response?.data === "string" && err.response.data) ||
-  fallback;
 
 /**
  * Confirms a cancellation and shows exactly what will be refunded. The refund figures come from the

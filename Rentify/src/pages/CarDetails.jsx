@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import api from "../api/axios";
+import { getErrorMessage } from "../api/errors";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -54,18 +55,9 @@ const CarDetails = () => {
       toast.success("Booking created successfully!");
       setTimeout(() => navigate("/dashboard"), 1500);
     } catch (err) {
-      let msg =
-        err.response?.data?.message ||
-        (typeof err.response?.data === "string" ? err.response.data : "Booking failed.");
-
+      const msg = getErrorMessage(err, "Booking failed. Please try again.");
       setBookingError(msg);
-
-      // Check for the phrase in the string (case-insensitive)
-      if (msg.toLowerCase().includes("not available")) {
-        toast.error("Car is not available for those dates. Please select different dates.");
-      } else {
-        toast.error(msg);
-      }
+      toast.error("Couldn't book this car", { description: msg });
     }
   };
 

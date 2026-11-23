@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import com.carrental.sdp.carrental.dto.CarRequestDTO;
 import com.carrental.sdp.carrental.dto.CarResponseDTO;
+import com.carrental.sdp.carrental.exception.ApiException;
 import com.carrental.sdp.carrental.model.Car;
 import com.carrental.sdp.carrental.repository.CarRepository;
 import com.carrental.sdp.carrental.util.CloudinaryUtil;
@@ -62,7 +63,7 @@ public class CarServiceImpl implements CarService {
                 String imageUrl = cloudinaryUtil.uploadImage(image);
                 car.setImageUrl(imageUrl);
             } catch (IOException e) {
-                throw new RuntimeException("Failed to upload image", e);
+                throw ApiException.badGateway("We couldn't upload the image. Please try again.", e);
             }
         }
 
@@ -81,7 +82,7 @@ public class CarServiceImpl implements CarService {
     @Override
     public CarResponseDTO updateCar(UUID id, CarRequestDTO carRequest, Optional<MultipartFile> image) {
         Car car = carRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Car not found"));
+                .orElseThrow(() -> ApiException.notFound("Car not found."));
 
         car.setModel(carRequest.getModel());
         car.setBrand(carRequest.getBrand());
@@ -101,7 +102,7 @@ public class CarServiceImpl implements CarService {
                 String imageUrl = cloudinaryUtil.uploadImage(image.get());
                 car.setImageUrl(imageUrl);
             } catch (IOException e) {
-                throw new RuntimeException("Failed to upload image", e);
+                throw ApiException.badGateway("We couldn't upload the image. Please try again.", e);
             }
         }
 
@@ -112,7 +113,7 @@ public class CarServiceImpl implements CarService {
     @Override
     public void deleteCar(UUID id) {
         Car car = carRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Car not found"));
+                .orElseThrow(() -> ApiException.notFound("Car not found."));
         // Delete image from Cloudinary if exists
         if (car.getImageUrl() != null) {
             try {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import api from "../api/axios";
+import { getErrorMessage } from "../api/errors";
 
 const CarForm = ({ car, onSuccess, onCancel }) => {
   const [form, setForm] = useState({
@@ -48,7 +49,7 @@ const CarForm = ({ car, onSuccess, onCancel }) => {
       }
       onSuccess();
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to save car.");
+      setError(getErrorMessage(err, "Failed to save car."));
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../../api/axios";
+import { toast } from "sonner";
+import { getErrorMessage } from "../../api/errors";
 import { motion } from "framer-motion";
 import { FaFileInvoiceDollar, FaCheck, FaExclamationTriangle } from "react-icons/fa";
 
@@ -32,6 +34,7 @@ const AdminPayments = () => {
         });
       } catch (err) {
         setPayments([]);
+        toast.error("Couldn't load payments", { description: getErrorMessage(err, "Please refresh the page.") });
       } finally {
         setLoading(false);
       }

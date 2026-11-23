@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../../api/axios";
+import { toast } from "sonner";
+import { getErrorMessage } from "../../api/errors";
 import CarForm from "../../components/CarForm";
 import { motion } from "framer-motion";
 import { FaCar, FaPlus, FaEdit, FaTrash } from "react-icons/fa";
@@ -16,7 +18,7 @@ const AdminCars = () => {
       const res = await api.get("/cars");
       setCars(res.data);
     } catch (err) {
-      console.error("Failed to fetch cars:", err);
+      toast.error("Couldn't load cars", { description: getErrorMessage(err, "Please refresh the page.") });
     } finally {
       setLoading(false);
     }
@@ -32,7 +34,7 @@ const AdminCars = () => {
       await api.delete(`/cars/${id}`);
       fetchCars();
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to delete car.");
+      toast.error("Couldn't delete car", { description: getErrorMessage(err, "Please try again.") });
     }
   };
 
@@ -216,7 +218,7 @@ const CarFormStyled = ({ car, onSuccess, onCancel }) => {
       }
       onSuccess();
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to save car.");
+      setError(getErrorMessage(err, "Failed to save car."));
     } finally {
       setLoading(false);
     }

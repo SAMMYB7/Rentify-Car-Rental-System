@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../api/axios";
+import { getErrorMessage } from "../api/errors";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
@@ -98,6 +99,7 @@ const Cars = () => {
       setCars(res.data);
     } catch (err) {
       setCars([]);
+      toast.error("Couldn't load cars", { description: getErrorMessage(err, "Please refresh the page.") });
     }
     setLoading(false);
   };

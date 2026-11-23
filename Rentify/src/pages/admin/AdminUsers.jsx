@@ -1,13 +1,10 @@
 import { useEffect, useState } from "react";
 import api from "../../api/axios";
+import { toast } from "sonner";
+import { getErrorMessage } from "../../api/errors";
 import { motion } from "framer-motion";
 import { FaUserEdit, FaTrash, FaUsersCog } from "react-icons/fa";
-
-const getErrorMessage = (err, fallback) =>
-  err.response?.data?.message ||
-  (typeof err.response?.data === "string" && err.response.data) ||
-  fallback;
-
+
 const AdminUsers = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,7 +21,7 @@ const AdminUsers = () => {
       const res = await api.get("/users");
       setUsers(res.data);
     } catch (error) {
-      console.error("Failed to fetch users:", error);
+      toast.error("Couldn't load users", { description: getErrorMessage(error, "Please refresh the page.") });
     } finally {
       setLoading(false);
     }
@@ -44,8 +41,7 @@ const AdminUsers = () => {
       await api.delete(`/users/${userId}`);
       setUsers(users.filter(user => user.id !== userId));
     } catch (error) {
-      console.error("Failed to delete user:", error);
-      alert(getErrorMessage(error, "Failed to delete user. Please try again."));
+      toast.error("Couldn't delete user", { description: getErrorMessage(error, "Please try again.") });
     }
   };
 
@@ -56,8 +52,7 @@ const AdminUsers = () => {
         user.id === userId ? { ...user, role: newRole } : user
       ));
     } catch (error) {
-      console.error("Failed to update user role:", error);
-      alert(getErrorMessage(error, "Failed to update user role. Please try again."));
+      toast.error("Couldn't change role", { description: getErrorMessage(error, "Please try again.") });
     }
   };
 
@@ -180,7 +175,6 @@ const UserEditModal = ({ user, onClose, onSave }) => {
       const res = await api.put(`/users/${user.id}`, form);
       onSave({ ...user, ...res.data });
     } catch (error) {
-      console.error("Failed to update user:", error);
       setError(getErrorMessage(error, "Failed to update user. Please try again."));
     } finally {
       setLoading(false);

@@ -4,11 +4,7 @@ import { motion } from "framer-motion";
 import { FaEnvelope, FaCheckCircle } from "react-icons/fa";
 import { toast } from "sonner";
 import api from "../api/axios";
-
-const getErrorMessage = (err, fallback) =>
-  err.response?.data?.message ||
-  (typeof err.response?.data === "string" && err.response.data) ||
-  fallback;
+import { getErrorMessage } from "../api/errors";
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");

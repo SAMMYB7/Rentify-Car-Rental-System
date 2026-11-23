@@ -42,6 +42,9 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional
     public BookingResponseDto createBooking(UUID userId, BookingRequestDto dto) {
+        if (dto.getCarId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Please choose a car to book.");
+        }
         Car car = carRepository.findById(dto.getCarId())
                 .orElseThrow(() -> new EntityNotFoundException("Car not found"));
         User user = userRepository.findById(userId)
@@ -49,7 +52,8 @@ public class BookingServiceImpl implements BookingService {
 
         validateDateOrder(dto);
         if (hasOverlap(car, dto.getStartDate(), dto.getEndDate(), null)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Car is not available for those dates.");
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This car is already booked for some of those dates. Please choose different dates.");
         }
 
         Booking booking = Booking.builder()
@@ -93,7 +97,8 @@ public class BookingServiceImpl implements BookingService {
         validateDateOrder(dto);
         // Exclude this booking itself, otherwise it always "overlaps" with its own old dates.
         if (hasOverlap(booking.getCar(), dto.getStartDate(), dto.getEndDate(), booking.getId())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Car is not available for those dates.");
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This car is already booked for some of those dates. Please choose different dates.");
         }
 
         booking.setStartDate(dto.getStartDate());
@@ -170,10 +175,17 @@ public class BookingServiceImpl implements BookingService {
                         car, BookingStatus.CANCELLED, excludedBookingId, end, start);
     }
 
+    /** Both dates present, pickup not in the past, return on or after pickup. */
     private static void validateDateOrder(BookingRequestDto dto) {
+        if (dto.getStartDate() == null || dto.getEndDate() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Please choose both a pick-up and a return date.");
+        }
+        if (dto.getStartDate().isBefore(LocalDate.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The pick-up date can't be in the past.");
+        }
         if (dto.getStartDate().isAfter(dto.getEndDate())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Start date must be before or equal to end date.");
+                    "The return date must be on or after the pick-up date.");
         }
     }
 
